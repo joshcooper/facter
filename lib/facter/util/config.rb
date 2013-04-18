@@ -22,24 +22,15 @@ module Facter::Util::Config
   end
 
   def self.windows_data_dir
-    if Dir.const_defined? 'COMMON_APPDATA' then
-      Dir::COMMON_APPDATA
-    else
-      nil
-    end
+    require 'win32/dir'
+    Dir::COMMON_APPDATA
   end
 
   def self.external_facts_dirs
-    windows_dir = windows_data_dir
-    if windows_dir.nil? then
-      ["/etc/facter/facts.d", "/etc/puppetlabs/facter/facts.d"]
+    if is_windows?
+      [File.join(windows_data_dir, 'PuppetLabs', 'facter', 'facts.d')]
     else
-      [File.join(windows_dir, 'PuppetLabs', 'facter', 'facts.d')]
+       ["/etc/facter/facts.d", "/etc/puppetlabs/facter/facts.d"]
     end
   end
-end
-
-if Facter::Util::Config.is_windows?
-  require 'rubygems'
-  require 'win32/dir'
 end
