@@ -79,8 +79,10 @@ Facter.add(:domain) do
     if domain == ""
       require 'facter/util/wmi'
       Facter::Util::WMI.execquery("select DNSDomain from Win32_NetworkAdapterConfiguration where IPEnabled = True").each { |nic|
-        domain = nic.DNSDomain
-        break
+        if nic.DNSDomain
+          domain = nic.DNSDomain
+          break
+        end
       }
     end
 

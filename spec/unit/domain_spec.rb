@@ -160,9 +160,9 @@ describe "Domain name facts" do
         Facter::Util::Registry.stubs(:hklm_read).returns('')
       end
 
-      it "should use the DNSDomain for the first nic where ip is enabled" do
+      it "should use the DNSDomain for the first nic where ip is enabled and whose value is non-nil" do
         nic = stubs 'nic'
-        nic.stubs(:DNSDomain).returns("foo.com")
+        nic.stubs(:DNSDomain).returns(nil)
 
         nic2 = stubs 'nic'
         nic2.stubs(:DNSDomain).returns("bar.com")
@@ -170,7 +170,7 @@ describe "Domain name facts" do
         require 'facter/util/wmi'
         Facter::Util::WMI.stubs(:execquery).with("select DNSDomain from Win32_NetworkAdapterConfiguration where IPEnabled = True").returns([nic, nic2])
 
-        Facter.fact(:domain).value.should == 'foo.com'
+        Facter.fact(:domain).value.should == 'bar.com'
       end
 
       context "without any network adapters with a specified DNSDomain" do
