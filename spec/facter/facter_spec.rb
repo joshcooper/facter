@@ -368,7 +368,7 @@ describe Facter do
       it 'sets show_legacy to true' do
         Facter.values({}, [])
 
-        expect(Facter::Options[:show_legacy]).to be true
+        expect(Facter::Options[:show_legacy]).to be false
       end
 
       it 'logs blocked facts' do
