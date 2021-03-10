@@ -19,12 +19,12 @@ module Facter
 
         module Hostname
           HOST_NAME_MAX = 64
-          EAI_NONAME = 8
+          EAI_NONAME = -2
 
           extend ::FFI::Library
           ffi_lib ::FFI::Library::LIBC
 
-          attach_function :getaddrinfo, %i[pointer pointer pointer pointer], :int
+          attach_function :getaddrinfo, %i[string string pointer pointer], :int
           attach_function :gethostname, %i[pointer int], :int
 
           def self.getffihostname
@@ -36,19 +36,23 @@ module Facter
             raw_hostname.read_string
           end
 
-          def self.getffiaddrinfo(hostname)
-            hostname_ptr = FFI::MemoryPointer.new(hostname)
+          def self.getffiaddrinfo(hostname) # rubocop:disable  Metrics/AbcSize
+            ret = FFI::MemoryPointer.new(Facter::Util::Resolvers::Ffi::AddrInfo)
 
             hints = Facter::Util::Resolvers::Ffi::AddrInfo.new
             hints[:ai_family] = Socket::AF_UNSPEC
             hints[:ai_socketype] = Socket::SOCK_STREAM
             hints[:ai_flags] = Socket::AI_CANONNAME
 
-            res = Hostname.getaddrinfo(hostname_ptr, FFI::Pointer::NULL, hints.to_ptr, FFI::Pointer::NULL)
-            return if res != 0 || res != EAI_NONAME
+            res = Hostname.getaddrinfo(hostname, '', hints.to_ptr, ret)
+            log = Log.new(self)
+            log.debug("FFI Getaddrinfo finished with exit status: #{res}")
+            return if res != 0 && res != EAI_NONAME
 
-            name_ptr = hints[:ai_canonname]
-            return if hints.to_ptr != FFI::Pointer::NULL || !name_ptr || hostname == name_ptr.read_string
+            addr = Facter::Util::Resolvers::Ffi::AddrInfo.new(ret.read_pointer)
+            name_ptr = addr[:ai_canonname]
+            log.debug("FFI Getaddrinfo returned a struct at address: #{ret} that has the fqdn at address: #{name_ptr}")
+            return if ret == FFI::Pointer::NULL || !name_ptr || hostname == name_ptr.read_string
 
             name_ptr.read_string
           end
