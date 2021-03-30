@@ -94,6 +94,7 @@ namespace facter { namespace facts {
 
     void collection::add(string name, unique_ptr<value> value)
     {
+        name = sanityze_name(name);
         // Ensure the fact is resolved before replacing it
         auto old_value = get_value(name);
 

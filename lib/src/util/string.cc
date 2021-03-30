@@ -167,4 +167,49 @@ namespace facter { namespace util {
             return boost::optional<int>();
         }
     }
+
+    string ltrim(const string &s) {
+      return boost::regex_replace(s, boost::regex("^\\s+"), string(""));
+    }
+
+    string rtrim(const string &s) {
+      return boost::regex_replace(s, boost::regex("\\s+$"), string(""));
+    }
+
+    string trim(const string &s) { return ltrim(rtrim(s)); }
+
+    string sanityze_name(string name) {
+      const boost::regex SPECIAL(".*['\"\\.].*");
+      if (!boost::regex_match(name, SPECIAL)) {
+        return name;
+      }
+
+      const boost::regex DELIMITER(
+          "(\\s*\"[^\"]+\"\\s*|\\s*'[^']+'\\s*|[^'\".]+)");
+
+      ostringstream o_sanityzed_name;
+      auto match_begin =
+          boost::sregex_iterator(name.begin(), name.end(), DELIMITER);
+      auto match_end = boost::sregex_iterator();
+
+      for (auto match_iter = match_begin; match_iter != match_end;
+           match_iter++) {
+        auto k = (*match_iter).str();
+        if (k == ".") {
+          continue;
+        }
+        k = trim(k);
+        if (k[0] == '"' || k[0] == '\'') {
+          k.erase(k.begin());    // Remove first char
+          k.erase(k.end() - 1);  // Remove last char
+        }
+
+        o_sanityzed_name << k << ".";
+      }
+
+      auto sanityzed_name = o_sanityzed_name.str();
+      sanityzed_name.erase(sanityzed_name.end() - 1);
+
+      return sanityzed_name;
+    }
 }}  // namespace facter::util
