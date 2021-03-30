@@ -62,7 +62,11 @@ module Facter
     end
 
     def get_fact(fact_name)
-      return @facts_ttls[fact_name] if @facts_ttls[fact_name]
+      split_fact_name = Facter::Framework::QuerySplitter.split_key(fact_name)
+      return @facts_ttls[split_fact_name.join('.')] if @facts_ttls[split_fact_name.join('.')]
+
+      ttls_key = @facts_ttls.keys.find { |key| Facter::Framework::QuerySplitter.split_key(key) == split_fact_name }
+      return @facts_ttls[ttls_key] if @facts_ttls[ttls_key]
 
       result = @facts_ttls.select { |name, fact| break fact if fact_name =~ /^#{name}\..*/ }
       return nil if result == {}

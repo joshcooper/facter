@@ -49,7 +49,7 @@ module Facter
       def search_for_facts(query, loaded_fact_hash)
         resolvable_fact_list = []
         query = query.to_s
-        query_tokens = query.end_with?('.*') ? [query] : query.split('.')
+        query_tokens = query.end_with?('.*') ? [query] : Facter::Framework::QuerySplitter.split_key(query)
         size = query_tokens.size
 
         size.times do |i|
@@ -74,6 +74,8 @@ module Facter
           # it will construt and return the 'os' fact
           if loaded_fact.name == query_tokens[0]
             resolvable_fact_list = [construct_loaded_fact(query_tokens, query_token_range, loaded_fact)]
+          elsif Facter::Framework::QuerySplitter.split_key(loaded_fact.name) == query_tokens
+            resolvable_fact_list = [construct_loaded_fact([loaded_fact.name], query_token_range, loaded_fact)]
           else
             query_fact = query_tokens[query_token_range].join('.')
 
