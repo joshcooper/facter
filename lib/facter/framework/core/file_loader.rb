@@ -421,6 +421,7 @@ os_hierarchy.each do |os|
     require_relative '../../facts/linux/kernelrelease.rb'
     require_relative '../../facts/linux/kernelversion.rb'
     require_relative '../../facts/linux/load_averages.rb'
+    require_relative '../../facts/linux/ldom.rb'
     require_relative '../../facts/linux/lsbdistrelease.rb'
     require_relative '../../facts/linux/macaddress_interfaces.rb'
     require_relative '../../facts/linux/memory/swap/available.rb'
@@ -502,6 +503,7 @@ os_hierarchy.each do |os|
     require_relative '../../resolvers/linux/docker_uptime.rb'
     require_relative '../../resolvers/linux/hostname.rb'
     require_relative '../../resolvers/linux/load_averages.rb'
+    require_relative '../../resolvers/linux/ldom.rb'
     require_relative '../../resolvers/linux/networking.rb'
 
   when 'linuxmint'
