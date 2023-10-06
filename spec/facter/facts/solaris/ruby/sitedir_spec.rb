@@ -11,8 +11,8 @@ describe Facts::Solaris::Ruby::Sitedir do
     end
 
     it 'calls Facter::Resolvers::Ruby' do
-      expect(Facter::Resolvers::Ruby).to receive(:resolve).with(:sitedir).and_return(value)
       fact.call_the_resolver
+      expect(Facter::Resolvers::Ruby).to have_received(:resolve).with(:sitedir)
     end
 
     it 'return ruby sitedir fact' do

@@ -46,7 +46,7 @@ describe LegacyFacter::Util::Confine do
     it 'uses the returned fact to get the value' do
       allow(Facter).to receive(:[]).with('yay').and_return @fact
 
-      expect(@fact).to receive(:value).and_return nil
+      expect(@fact).to receive(:value)
 
       LegacyFacter::Util::Confine.new('yay', 'test').true?
     end

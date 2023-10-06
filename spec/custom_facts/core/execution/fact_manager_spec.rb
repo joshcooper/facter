@@ -82,8 +82,8 @@ describe Facter::Core::Execution::Base do
       allow(FileTest).to receive(:file?).and_return(false)
       allow(File).to receive(:executable?).with('/sbin/foo').and_return(true)
       allow(FileTest).to receive(:file?).with('/sbin/foo').and_return(true)
-      expect(Facter::Core::Execution::Popen3).to receive(:popen3e).with({ 'LC_ALL' => 'C', 'LANG' => 'C' }, '/sbin/foo')
-                                                                  .and_return('')
+      allow(Facter::Core::Execution::Popen3).to receive(:popen3e).with({ 'LC_ALL' => 'C', 'LANG' => 'C' }, '/sbin/foo')
+                                                                 .and_return('')
       executor.execute('foo')
     end
 

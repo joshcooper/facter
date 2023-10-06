@@ -11,8 +11,8 @@ describe Facts::Solaris::Ruby::Platform do
     end
 
     it 'calls Facter::Resolvers::Ruby' do
-      expect(Facter::Resolvers::Ruby).to receive(:resolve).with(:platform).and_return(value)
       fact.call_the_resolver
+      expect(Facter::Resolvers::Ruby).to have_received(:resolve).with(:platform)
     end
 
     it 'return ruby.platform fact' do

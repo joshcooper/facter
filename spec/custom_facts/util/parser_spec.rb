@@ -193,7 +193,7 @@ describe LegacyFacter::Util::Parser do
     it 'quotes scripts with spaces' do
       path = "/h a s s p a c e s#{ext}"
 
-      expect(Facter::Core::Execution).to receive(:execute_command)
+      allow(Facter::Core::Execution).to receive(:execute_command)
         .with("\"#{path}\"").and_return([data_in_txt, nil])
       expects_script_to_return(path, data_in_txt, data)
     end
