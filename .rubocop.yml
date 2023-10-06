@@ -41,6 +41,11 @@ Naming/MethodName:
     - 'spec/mocks/win32ole.rb'
     - 'spec/mocks/ffi.rb'
 
+Naming/PredicateName:
+  Exclude:
+    - 'spec/**/*'
+    - 'lib/facter/custom_facts/core/suitable.rb'
+
 Naming/VariableNumber:
   Exclude:
     - 'lib/facter/resolvers/windows/ffi/networking_ffi.rb'
