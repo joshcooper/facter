@@ -20,16 +20,6 @@ Layout/TrailingWhitespace:
   Exclude:
     - 'repro.rb'
 
-# Offense count: 3
-# Configuration parameters: IgnoredMethods.
-Metrics/CyclomaticComplexity:
-  Max: 9
-
-# Offense count: 2
-# Configuration parameters: IgnoredMethods.
-Metrics/PerceivedComplexity:
-  Max: 9
-
 # Offense count: 68
 # Configuration parameters: CustomTransform, IgnoreMethods, SpecSuffixOnly.
 RSpec/FilePath:
