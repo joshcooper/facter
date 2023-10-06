@@ -124,7 +124,7 @@ Style/DoubleNegation:
     - 'lib/facter/custom_facts/core/execution/windows.rb'
     - 'lib/facter/custom_facts/core/execution/posix.rb'
 
-Style/MethodMissingSuper:
+Lint/MissingSuper:
   Exclude:
     - 'lib/facter.rb'
 
