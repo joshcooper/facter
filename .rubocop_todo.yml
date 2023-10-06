@@ -33,15 +33,6 @@ RSpec/InstanceVariable:
     - 'spec/custom_facts/util/collection_spec.rb'
     - 'spec/custom_facts/util/confine_spec.rb'
 
-# Offense count: 8
-RSpec/LeakyConstantDeclaration:
-  Exclude:
-    - 'spec/custom_facts/core/resolvable_spec.rb'
-    - 'spec/custom_facts/core/suitable_spec.rb'
-    - 'spec/custom_facts/util/collection_spec.rb'
-    - 'spec/facter/resolvers/macosx/mountpoints_spec.rb'
-    - 'spec/facter/util/windows/network_utils_spec.rb'
-
 # Offense count: 75
 # Configuration parameters: EnforcedStyle.
 # SupportedStyles: have_received, receive
