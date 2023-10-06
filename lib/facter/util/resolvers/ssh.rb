@@ -5,6 +5,7 @@ module Facter
     module Resolvers
       class Ssh
         attr_accessor :fingerprint, :type, :key, :name
+
         def initialize(fingerprint, type, key, name)
           @fingerprint = fingerprint
           @type = type

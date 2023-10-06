@@ -6,6 +6,7 @@ describe LegacyFacter::Core::Suitable do
       @confines = []
     end
     attr_reader :confines
+
     include LegacyFacter::Core::Suitable
   end
 

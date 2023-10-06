@@ -8,6 +8,7 @@ describe LegacyFacter::Core::Resolvable do
     end
     attr_accessor :name, :resolve_value
     attr_reader :fact
+
     include LegacyFacter::Core::Resolvable
   end
 
