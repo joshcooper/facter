@@ -149,7 +149,7 @@ module Facter
     def root_fact_name(fact)
       # REMIND: split fact name to tokens
 #      Facter::Utils.split_user_query(fact.name).first
-      root = fact.name.split('.').first
+      root = Facter::Utils.split_user_query(fact.name).first
       puts "root fact #{root}"
       root
     end

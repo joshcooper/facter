@@ -91,15 +91,12 @@ module Facter
     def extract_fact_name(fact)
       case fact.type
       when :legacy
+        # REMIND: can legacy fact names contain dots?
         [fact.name]
       when :custom, :external
-        # REMIND: split name to tokens
-        Options[:force_dot_resolution] == true ? fact.name.split('.') : [fact.name]
+        Facter::Utils.split_user_query(fact.name)
       else
-        # REMIND: split name to tokens
-        q = fact.name.split('.')
-        puts "extracted fact name [#{q.join(', ')}]"
-        q
+        Facter::Utils.split_user_query(fact.name)
       end
     end
   end

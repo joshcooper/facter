@@ -47,20 +47,19 @@ module Facter
       def search_for_facts(query, loaded_facts)
         resolvable_fact_list = []
         query = query.to_s
-        # REMIND: split string to tokens
-        query_tokens = query.end_with?('.*') ? [query] : query.split('.')
-        # query_tokens = if query.end_with?('.*')
-        #                  [query]
-        #                else
-        #                  Facter::Utils.split_user_query(query)
-        #                end
+        # REMIND: what about wildcards?
+        query_tokens = if query.end_with?('.*')
+                         [query]
+                       else
+                         Facter::Utils.split_user_query(query)
+                       end
         puts "querying for tokens [#{query_tokens.join(', ')}]"
         size = query_tokens.size
 
         # Try to match the most specific query_tokens to the least, returning the first match
         size.times do |i|
           query_token_range = 0..size - i - 1
-          query_fact = query_tokens[query_token_range].join('.')
+          query_fact = Facter::Utils.join_user_query(query_tokens[query_token_range])
           resolvable_fact_list = get_facts_matching_tokens(query_tokens, query_fact, loaded_facts)
 
           return resolvable_fact_list if resolvable_fact_list.any?
@@ -107,7 +106,9 @@ module Facter
       end
 
       def construct_loaded_fact(query_tokens, loaded_fact)
-        user_query = @query_list.any? ? query_tokens.join('.') : ''
+        # query_list may contain multiple args, e.g. facter os networking
+        # query_tokens may contain dotted values, e.g. os.distro
+        user_query = @query_list.any? ? Facter::Utils.join_user_query(query_tokens) : ''
         fact_name = loaded_fact.name.to_s
         klass_name = loaded_fact.klass
         type = loaded_fact.type
