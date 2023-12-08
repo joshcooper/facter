@@ -47,7 +47,14 @@ module Facter
       def search_for_facts(query, loaded_facts)
         resolvable_fact_list = []
         query = query.to_s
+        # REMIND: split string to tokens
         query_tokens = query.end_with?('.*') ? [query] : query.split('.')
+        # query_tokens = if query.end_with?('.*')
+        #                  [query]
+        #                else
+        #                  Facter::Utils.split_user_query(query)
+        #                end
+        puts "querying for tokens [#{query_tokens.join(', ')}]"
         size = query_tokens.size
 
         # Try to match the most specific query_tokens to the least, returning the first match
@@ -87,11 +94,15 @@ module Facter
 
         if fact_with_wildcard
           # fact_name contains wildcard, so we're intentially not escaping.
-          query_fact.match("^#{fact_name}$")
+          matched = query_fact.match("^#{fact_name}$")
+          puts "matched wildcard #{query_fact} to #{fact_name}" if matched
+          matched
         else
           processed_equery_fact = query_fact.gsub('\\', '\\\\\\\\')
           # Must escape metacharacters (like dots) to ensure the correct fact is found
-          fact_name.match("^#{Regexp.escape(processed_equery_fact)}($|\\.)")
+          matched = fact_name.match("^#{Regexp.escape(processed_equery_fact)}($|\\.)")
+          puts "matched #{query_fact} to #{fact_name}" if matched
+          matched
         end
       end
 

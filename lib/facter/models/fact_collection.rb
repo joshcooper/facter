@@ -57,6 +57,7 @@ module Facter
       raise ArgumentError, '2 or more arguments required' if args.count < 2
 
       if args.count == 2
+        puts "buried #{args[0]}=#{args[1]}"
         self[args[0]] = args[1]
       else
         arg = args.shift
@@ -76,9 +77,12 @@ module Facter
     end
 
     def bury_fact(fact)
+      puts "burying #{fact.name} (#{fact.type})"
       split_fact_name = extract_fact_name(fact)
+
       bury(*split_fact_name << fact.value)
     rescue NoMethodError
+      # REMIND: split
       @log.error("#{fact.type.to_s.capitalize} fact `#{fact.name}` cannot be added to collection."\
           ' The format of this fact is incompatible with other'\
           " facts that belong to `#{fact.name.split('.').first}` group")
@@ -89,9 +93,13 @@ module Facter
       when :legacy
         [fact.name]
       when :custom, :external
+        # REMIND: split name to tokens
         Options[:force_dot_resolution] == true ? fact.name.split('.') : [fact.name]
       else
-        fact.name.split('.')
+        # REMIND: split name to tokens
+        q = fact.name.split('.')
+        puts "extracted fact name [#{q.join(', ')}]"
+        q
       end
     end
   end

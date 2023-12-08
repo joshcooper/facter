@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# REMIND: the user_query is never passed into the constructor, it's only set later, why? The cache manager does pass it in, but not when originally created.
+
 module Facter
   class ResolvedFact
     attr_reader :name, :type
