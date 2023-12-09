@@ -67,3 +67,6 @@ Style/GlobalStdStream:
     - 'lib/facter/framework/logging/logger.rb'
     - 'spec/framework/core/fact/internal/internal_fact_manager_spec.rb'
     - 'spec/framework/logging/logger_spec.rb'
+
+Style/IfUnlessModifier:
+  Enabled: false
