@@ -12,20 +12,6 @@
 RSpec/FilePath:
   Enabled: false
 
-# Offense count: 15
-RSpec/MultipleExpectations:
-  Max: 3
-
-# Offense count: 170
-# Configuration parameters: AllowSubject.
-RSpec/MultipleMemoizedHelpers:
-  Max: 16
-
-# Offense count: 243
-# Configuration parameters: AllowedGroups.
-RSpec/NestedGroups:
-  Max: 6
-
 # Offense count: 6
 RSpec/SubjectStub:
   Exclude:
