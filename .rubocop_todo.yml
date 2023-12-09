@@ -12,12 +12,6 @@
 RSpec/FilePath:
   Enabled: false
 
-# Offense count: 81
-# Configuration parameters: EnforcedStyle.
-# SupportedStyles: have_received, receive
-RSpec/MessageSpies:
-  Enabled: false
-
 # Offense count: 15
 RSpec/MultipleExpectations:
   Max: 3
