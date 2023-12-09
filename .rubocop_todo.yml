@@ -77,14 +77,6 @@ Style/ClassVars:
 Style/Documentation:
   Enabled: false
 
-# Offense count: 3
-# This cop supports unsafe autocorrection (--autocorrect-all).
-# Configuration parameters: AllowedReceivers.
-# AllowedReceivers: Thread.current
-Style/HashEachMethods:
-  Exclude:
-    - 'spec/custom_facts/core/execution/fact_manager_spec.rb'
-
 # Offense count: 1
 # This cop supports unsafe autocorrection (--autocorrect-all).
 Style/HashTransformKeys:
