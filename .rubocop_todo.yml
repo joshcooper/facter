@@ -82,7 +82,3 @@ Style/Documentation:
 Style/IfUnlessModifier:
   Enabled: false
 
-# Offense count: 1
-Style/MissingRespondToMissing:
-  Exclude:
-    - 'lib/facter.rb'
