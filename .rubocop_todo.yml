@@ -12,14 +12,6 @@
 RSpec/FilePath:
   Enabled: false
 
-# Offense count: 13
-# Configuration parameters: AssignmentOnly.
-RSpec/InstanceVariable:
-  Exclude:
-    - 'spec/custom_facts/core/execution/fact_manager_spec.rb'
-    - 'spec/custom_facts/util/collection_spec.rb'
-    - 'spec/custom_facts/util/confine_spec.rb'
-
 # Offense count: 81
 # Configuration parameters: EnforcedStyle.
 # SupportedStyles: have_received, receive
