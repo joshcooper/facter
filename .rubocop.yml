@@ -71,6 +71,13 @@ RSpec/MultipleMemoizedHelpers:
 RSpec/NestedGroups:
   Max: 6
 
+RSpec/SubjectStub:
+  Exclude:
+    - 'spec/custom_facts/core/aggregate_spec.rb'
+    - 'spec/custom_facts/core/resolvable_spec.rb'
+    - 'spec/custom_facts/util/fact_spec.rb'
+    - 'spec/custom_facts/util/resolution_spec.rb'
+
 Layout/LineLength:
   Enabled: false
 
