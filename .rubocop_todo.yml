@@ -77,12 +77,6 @@ Style/ClassVars:
 Style/Documentation:
   Enabled: false
 
-# Offense count: 1
-# This cop supports unsafe autocorrection (--autocorrect-all).
-Style/HashTransformKeys:
-  Exclude:
-    - 'lib/facter/util/macosx/system_profile_executor.rb'
-
 # Offense count: 32
 # This cop supports safe autocorrection (--autocorrect).
 Style/IfUnlessModifier:
