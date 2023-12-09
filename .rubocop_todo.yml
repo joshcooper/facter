@@ -12,11 +12,6 @@
 RSpec/FilePath:
   Enabled: false
 
-# Offense count: 114
-# Configuration parameters: IgnoreNameless, IgnoreSymbolicNames.
-RSpec/VerifiedDoubles:
-  Enabled: false
-
 # Need to remove logger class variables
 Style/ClassVars:
   Exclude:
