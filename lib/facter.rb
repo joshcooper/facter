@@ -107,6 +107,7 @@ module Facter
     # @api public
     def clear
       @already_searched = {}
+      @fact_manager = nil
       Facter.clear_messages
       LegacyFacter.clear
       Options[:custom_dir] = []
@@ -131,7 +132,7 @@ module Facter
     # @api private
     def core_value(user_query)
       user_query = user_query.to_s
-      resolved_facts = Facter::FactManager.instance.resolve_core([user_query])
+      resolved_facts = fact_manager.resolve_core([user_query])
       fact_collection = FactCollection.new.build_fact_collection!(resolved_facts)
       splitted_user_query = Facter::Utils.split_user_query(user_query)
       fact_collection.dig(*splitted_user_query)
@@ -261,7 +262,7 @@ module Facter
     # @api public
     def each
       log_blocked_facts
-      resolved_facts = Facter::FactManager.instance.resolve_facts
+      resolved_facts = fact_manager.resolve_facts
 
       resolved_facts.each do |fact|
         yield(fact.name, fact.value)
@@ -377,7 +378,7 @@ module Facter
       log_blocked_facts
       logger.debug("Facter version: #{Facter::VERSION}")
 
-      resolved_facts = Facter::FactManager.instance.resolve_facts
+      resolved_facts = fact_manager.resolve_facts
       resolved_facts.reject! { |fact| fact.type == :custom && fact.value.nil? }
       collection = Facter::FactCollection.new.build_fact_collection!(resolved_facts)
 
@@ -512,9 +513,13 @@ module Facter
 
     private
 
+    def fact_manager
+      @fact_manager ||= FactManager.new(fact_loader: FactLoader.new)
+    end
+
     def queried_facts(user_query)
       log_blocked_facts
-      resolved_facts = Facter::FactManager.instance.resolve_facts(user_query)
+      resolved_facts = fact_manager.resolve_facts(user_query)
       resolved_facts.reject! { |fact| fact.type == :custom && fact.value.nil? }
 
       # Ensures order of keys in hash returned from Facter.to_hash() and
@@ -527,7 +532,7 @@ module Facter
     end
 
     def resolve_facts_for_user_query(user_query)
-      resolved_facts = Facter::FactManager.instance.resolve_facts(user_query)
+      resolved_facts = fact_manager.resolve_facts(user_query)
       user_querie = resolved_facts.uniq(&:user_query).map(&:user_query).first
 
       resolved_facts.reject! { |fact| fact.type == :custom && fact.value.nil? } if user_querie&.empty?
@@ -568,7 +573,7 @@ module Facter
     # @return [ResolvedFact]
     def resolve_fact(user_query)
       user_query = user_query.to_s
-      resolved_facts = Facter::FactManager.instance.resolve_fact(user_query)
+      resolved_facts = fact_manager.resolve_fact(user_query)
       # we must make a distinction between custom facts that return nil and nil facts
       # Nil facts should not be packaged as ResolvedFacts! (add_fact_to_searched_facts packages facts)
       resolved_facts = resolved_facts.reject { |fact| fact.type == :nil }

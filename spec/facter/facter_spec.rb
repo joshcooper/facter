@@ -16,6 +16,7 @@ describe Facter do
 
   let(:logger) { instance_spy(Facter::Log) }
   let(:config_reader_double) { class_spy(Facter::ConfigReader) }
+  let(:fact_manager) { instance_spy(Facter::FactManager) }
 
   sorted_fact_hash = { 'mountpoints' => { '/' => { 'device' => 'dev2', 'filesystem' => 'ext4' },
                                           '/boot' => { 'device' => 'dev1', 'filesystem' => 'ext4' } } }
@@ -35,6 +36,7 @@ describe Facter do
     allow(Facter::Log).to receive(:new).and_return(logger)
     Facter.clear
     allow(Facter::SessionCache).to receive(:invalidate_all_caches)
+    allow(Facter::FactManager).to receive(:new).and_return(fact_manager)
   end
 
   after do
@@ -42,7 +44,7 @@ describe Facter do
   end
 
   def stub_facts(resolved_facts)
-    allow(Facter::FactManager.instance).to receive(:resolve_facts).and_return(resolved_facts)
+    allow(fact_manager).to receive(:resolve_facts).and_return(resolved_facts)
   end
 
   def stub_no_facts
@@ -50,11 +52,11 @@ describe Facter do
   end
 
   def stub_one_fact(resolved_facts)
-    allow(Facter::FactManager.instance).to receive(:resolve_fact).and_return([resolved_facts])
+    allow(fact_manager).to receive(:resolve_fact).and_return([resolved_facts])
   end
 
   def stub_no_fact
-    allow(Facter::FactManager.instance).to receive(:resolve_fact).and_return([])
+    allow(fact_manager).to receive(:resolve_fact).and_return([])
   end
 
   describe '#resolve' do
@@ -209,7 +211,7 @@ describe Facter do
     end
 
     it 'resolves facts once' do
-      expect(Facter::FactManager.instance).to receive(:resolve_fact).with('os.name').once.and_return([os_fact])
+      expect(fact_manager).to receive(:resolve_fact).with('os.name').once.and_return([os_fact])
 
       Facter.value('os.name')
       Facter.value('os.name')
@@ -224,7 +226,7 @@ describe Facter do
     context 'when fact value is false' do
       it 'resolves facts once' do
         boolean_fact = Facter::ResolvedFact.new('boolean', false, :core, '')
-        expect(Facter::FactManager.instance).to receive(:resolve_fact).with('boolean').once.and_return([boolean_fact])
+        expect(fact_manager).to receive(:resolve_fact).with('boolean').once.and_return([boolean_fact])
 
         Facter.value('boolean')
         Facter.value('boolean')
@@ -311,13 +313,13 @@ describe Facter do
 
   describe '#core_value' do
     it 'searched in core facts and returns a value' do
-      allow(Facter::FactManager.instance).to receive(:resolve_core).with(['os.name']).and_return([os_fact])
+      allow(fact_manager).to receive(:resolve_core).with(['os.name']).and_return([os_fact])
 
       expect(Facter.core_value('os.name')).to eq('ubuntu')
     end
 
     it 'searches os core fact and returns nil' do
-      allow(Facter::FactManager.instance).to receive(:resolve_core).with(['os.name']).and_return([])
+      allow(fact_manager).to receive(:resolve_core).with(['os.name']).and_return([])
 
       expect(Facter.core_value('os.name')).to be nil
     end

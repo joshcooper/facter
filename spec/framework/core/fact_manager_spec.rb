@@ -1,6 +1,14 @@
 # frozen_string_literal: true
 
 describe Facter::FactManager do
+  subject(:fact_manager) do
+    Facter::FactManager.new(
+      fact_loader: fact_loader,
+      internal_fact_manager: internal_manager,
+      external_fact_manager: external_manager
+    )
+  end
+
   let(:internal_manager) { instance_spy(Facter::InternalFactManager) }
   let(:external_manager) { instance_spy(Facter::ExternalFactManager) }
   let(:cache_manager) { instance_spy(Facter::CacheManager) }
@@ -25,14 +33,8 @@ describe Facter::FactManager do
   end
 
   before do
-    Singleton.__init__(Facter::FactManager)
-    Singleton.__init__(Facter::FactLoader)
-
     allow(Facter::Log).to receive(:new).and_return(logger)
-    allow(Facter::InternalFactManager).to receive(:new).and_return(internal_manager)
-    allow(Facter::ExternalFactManager).to receive(:new).and_return(external_manager)
     allow(Facter::CacheManager).to receive(:new).and_return(cache_manager)
-    allow(Facter::FactLoader).to receive(:new).and_return(fact_loader)
   end
 
   describe '#resolve_facts' do
@@ -64,7 +66,7 @@ describe Facter::FactManager do
     let(:resolved_fact) { mock_resolved_fact(os, 'Ubuntu', os) }
 
     before do
-      allow(Facter::FactLoader.instance).to receive(:load).and_return(loaded_facts)
+      allow(fact_loader).to receive(:load).and_return(loaded_facts)
       stub_query_parser([user_query, loaded_facts], searched_facts)
       stub_internal_manager(searched_facts, [resolved_fact])
       stub_external_manager(searched_facts, nil)
@@ -72,7 +74,7 @@ describe Facter::FactManager do
     end
 
     it 'resolved all facts' do
-      resolved_facts = Facter::FactManager.instance.resolve_facts(user_query)
+      resolved_facts = fact_manager.resolve_facts(user_query)
 
       expect(resolved_facts).to eq([resolved_fact])
     end
@@ -117,28 +119,28 @@ describe Facter::FactManager do
         end
 
         it 'tries to load it from fact_name.rb' do
-          Facter::FactManager.instance.resolve_fact(user_query)
+          fact_manager.resolve_fact(user_query)
 
           expect(logger).to have_received(:debug)
             .with("Searching fact: #{user_query} in file: #{user_query}.rb")
         end
 
         it 'loads core and external facts' do
-          Facter::FactManager.instance.resolve_fact(user_query)
+          fact_manager.resolve_fact(user_query)
 
           expect(logger).to have_received(:debug)
             .with("Searching fact: #{user_query} in core facts and external facts")
         end
 
         it 'does not load all custom facts' do
-          Facter::FactManager.instance.resolve_fact(user_query)
+          fact_manager.resolve_fact(user_query)
 
           expect(logger).not_to have_received(:debug)
             .with("Searching fact: #{user_query} in all custom facts")
         end
 
         it 'resolves fact' do
-          resolved_facts = Facter::FactManager.instance.resolve_fact(user_query)
+          resolved_facts = fact_manager.resolve_fact(user_query)
 
           expect(resolved_facts).to eql([resolved_fact])
         end
@@ -168,28 +170,28 @@ describe Facter::FactManager do
         end
 
         it 'tries to load it from fact_name.rb' do
-          Facter::FactManager.instance.resolve_fact(user_query)
+          fact_manager.resolve_fact(user_query)
 
           expect(logger).to have_received(:debug)
             .with("Searching fact: #{user_query} in file: #{user_query}.rb")
         end
 
         it 'loads core and external facts' do
-          Facter::FactManager.instance.resolve_fact(user_query)
+          fact_manager.resolve_fact(user_query)
 
           expect(logger).to have_received(:debug)
             .with("Searching fact: #{user_query} in core facts and external facts")
         end
 
         it 'loads all custom facts' do
-          Facter::FactManager.instance.resolve_fact(user_query)
+          fact_manager.resolve_fact(user_query)
 
           expect(logger).to have_received(:debug)
             .with("Searching fact: #{user_query} in all custom facts")
         end
 
         it 'resolves fact' do
-          resolved_facts = Facter::FactManager.instance.resolve_fact(user_query)
+          resolved_facts = fact_manager.resolve_fact(user_query)
 
           expect(resolved_facts).to eql([resolved_fact])
         end
@@ -214,7 +216,7 @@ describe Facter::FactManager do
         end
 
         it 'returns the cached fact' do
-          resolved_facts = Facter::FactManager.instance.resolve_fact(user_query)
+          resolved_facts = fact_manager.resolve_fact(user_query)
 
           expect(resolved_facts).to eql([cached_fact])
         end
@@ -270,28 +272,28 @@ describe Facter::FactManager do
       end
 
       it 'tries to load it from fact_name.rb' do
-        Facter::FactManager.instance.resolve_fact(user_query)
+        fact_manager.resolve_fact(user_query)
 
         expect(logger).to have_received(:debug)
           .with("Searching fact: #{user_query} in file: #{user_query}.rb")
       end
 
       it 'loads core and external facts' do
-        Facter::FactManager.instance.resolve_fact(user_query)
+        fact_manager.resolve_fact(user_query)
 
         expect(logger).to have_received(:debug)
           .with("Searching fact: #{user_query} in core facts and external facts")
       end
 
       it 'does not load all custom facts' do
-        Facter::FactManager.instance.resolve_fact(user_query)
+        fact_manager.resolve_fact(user_query)
 
         expect(logger).not_to have_received(:debug)
           .with("Searching fact: #{user_query} in all custom facts")
       end
 
       it 'resolves fact' do
-        resolved_facts = Facter::FactManager.instance.resolve_fact(user_query)
+        resolved_facts = fact_manager.resolve_fact(user_query)
 
         expect(resolved_facts).to eql([resolved_fact])
       end
@@ -306,7 +308,7 @@ describe Facter::FactManager do
         end
 
         it 'does not resolve fact' do
-          resolved_facts = Facter::FactManager.instance.resolve_fact(user_query)
+          resolved_facts = fact_manager.resolve_fact(user_query)
           expect(resolved_facts).to be_empty
         end
       end
@@ -316,7 +318,7 @@ describe Facter::FactManager do
         let(:resolved_fact) { mock_resolved_fact('fips_enabled', false, 'fips_enabled', :core) }
 
         it 'resolves fact to false' do
-          resolved_facts = Facter::FactManager.instance.resolve_fact(user_query)
+          resolved_facts = fact_manager.resolve_fact(user_query)
           expect(resolved_facts.first.value).to be(false)
         end
       end
@@ -353,28 +355,28 @@ describe Facter::FactManager do
       end
 
       it 'tries to load it from fact_name.rb' do
-        Facter::FactManager.instance.resolve_fact(user_query)
+        fact_manager.resolve_fact(user_query)
 
         expect(logger).to have_received(:debug)
           .with("Searching fact: #{user_query} in file: #{user_query}.rb")
       end
 
       it 'loads core and external facts' do
-        Facter::FactManager.instance.resolve_fact(user_query)
+        fact_manager.resolve_fact(user_query)
 
         expect(logger).to have_received(:debug)
           .with("Searching fact: #{user_query} in core facts and external facts")
       end
 
       it 'loads all custom facts' do
-        Facter::FactManager.instance.resolve_fact(user_query)
+        fact_manager.resolve_fact(user_query)
 
         expect(logger).to have_received(:debug)
           .with("Searching fact: #{user_query} in all custom facts")
       end
 
       it 'resolves fact' do
-        resolved_facts = Facter::FactManager.instance.resolve_fact(user_query)
+        resolved_facts = fact_manager.resolve_fact(user_query)
 
         expect(resolved_facts).to eql([])
       end
@@ -405,7 +407,7 @@ describe Facter::FactManager do
       stub_internal_manager([searched_fact], [resolved_fact])
       stub_cache_manager([searched_fact], [])
 
-      resolved_facts = Facter::FactManager.instance.resolve_core(user_query)
+      resolved_facts = fact_manager.resolve_core(user_query)
 
       expect(resolved_facts).to eq([resolved_fact])
     end

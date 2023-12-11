@@ -2,6 +2,11 @@
 
 describe Facter::FactLoader do
   describe '#load' do
+    subject(:fact_loader) do
+      described_class.new(internal_loader: internal_fact_loader_double,
+                          external_loader: external_fact_loader_double)
+    end
+
     let(:internal_fact_loader_double) { instance_spy(Facter::InternalFactLoader) }
     let(:external_fact_loader_double) { instance_spy(Facter::ExternalFactLoader) }
 
@@ -23,13 +28,6 @@ describe Facter::FactLoader do
                                        type: :external, is_env: true)
     end
 
-    before do
-      Singleton.__init__(Facter::FactLoader)
-
-      allow(Facter::InternalFactLoader).to receive(:new).and_return(internal_fact_loader_double)
-      allow(Facter::ExternalFactLoader).to receive(:new).and_return(external_fact_loader_double)
-    end
-
     it 'loads all internal facts' do
       options = { user_query: true }
 
@@ -39,7 +37,7 @@ describe Facter::FactLoader do
       allow(external_fact_loader_double).to receive(:custom_facts).and_return([])
       allow(external_fact_loader_double).to receive(:external_facts).and_return([])
 
-      loaded_facts = Facter::FactLoader.instance.load(options[:user_query], options)
+      loaded_facts = fact_loader.load(options[:user_query], options)
       expect(loaded_facts).to eq(facts_to_load)
     end
 
@@ -52,7 +50,7 @@ describe Facter::FactLoader do
       allow(external_fact_loader_double).to receive(:custom_facts).and_return([])
       allow(external_fact_loader_double).to receive(:external_facts).and_return([])
 
-      loaded_facts = Facter::FactLoader.instance.load(nil, options)
+      loaded_facts = fact_loader.load(nil, options)
       expect(loaded_facts).to eq(facts_to_load)
     end
 
@@ -65,7 +63,7 @@ describe Facter::FactLoader do
       allow(external_fact_loader_double).to receive(:custom_facts).and_return([])
       allow(external_fact_loader_double).to receive(:external_facts).and_return([])
 
-      loaded_facts = Facter::FactLoader.instance.load(nil, options)
+      loaded_facts = fact_loader.load(nil, options)
       expect(loaded_facts.size).to eq(0)
     end
 
@@ -78,7 +76,7 @@ describe Facter::FactLoader do
       allow(external_fact_loader_double).to receive(:custom_facts).and_return([])
       allow(external_fact_loader_double).to receive(:external_facts).and_return([])
 
-      loaded_facts = Facter::FactLoader.instance.load(nil, options)
+      loaded_facts = fact_loader.load(nil, options)
       expect(loaded_facts.size).to eq(1)
     end
 
@@ -93,7 +91,7 @@ describe Facter::FactLoader do
 
       it 'blocks one custom fact' do
         options = { custom_facts: true, blocked_facts: ['custom_fact'] }
-        loaded_facts = Facter::FactLoader.instance.load(nil, options)
+        loaded_facts = fact_loader.load(nil, options)
 
         expect(loaded_facts.size).to eq(0)
       end
@@ -108,8 +106,8 @@ describe Facter::FactLoader do
       allow(external_fact_loader_double).to receive(:custom_facts).and_return([])
       allow(external_fact_loader_double).to receive(:external_facts).and_return([])
 
-      loaded_facts1 = Facter::FactLoader.instance.load(options[:user_query], options)
-      loaded_facts2 = Facter::FactLoader.instance.load(options[:user_query], options)
+      loaded_facts1 = fact_loader.load(options[:user_query], options)
+      loaded_facts2 = fact_loader.load(options[:user_query], options)
       expect(loaded_facts1).to eq(loaded_facts2)
     end
 
@@ -122,8 +120,8 @@ describe Facter::FactLoader do
       allow(external_fact_loader_double).to receive(:custom_facts).and_return(facts_to_load)
       allow(external_fact_loader_double).to receive(:external_facts).and_return([])
 
-      loaded_facts1 = Facter::FactLoader.instance.load(nil, options)
-      loaded_facts2 = Facter::FactLoader.instance.load(nil, options)
+      loaded_facts1 = fact_loader.load(nil, options)
+      loaded_facts2 = fact_loader.load(nil, options)
       expect(loaded_facts1).to eq(loaded_facts2)
     end
 
@@ -134,7 +132,7 @@ describe Facter::FactLoader do
       allow(external_fact_loader_double).to receive(:custom_facts).and_return([])
       allow(external_fact_loader_double).to receive(:external_facts).and_return([loaded_env_custom_fact])
 
-      loaded_facts = Facter::FactLoader.instance.load(nil, options)
+      loaded_facts = fact_loader.load(nil, options)
       expect(loaded_facts).to be_an_instance_of(Array).and contain_exactly(
         loaded_env_custom_fact
       )
@@ -152,7 +150,7 @@ describe Facter::FactLoader do
       let(:options) { { block_list: 'legacy' } }
 
       it 'blocks legacy facts' do
-        loaded_facts = Facter::FactLoader.instance.load(nil, options)
+        loaded_facts = fact_loader.load(nil, options)
 
         expect(loaded_facts).to be_empty
       end

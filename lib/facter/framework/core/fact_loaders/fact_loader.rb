@@ -2,11 +2,9 @@
 
 module Facter
   class FactLoader
-    include Singleton
-
     attr_reader :internal_facts, :external_facts, :facts
 
-    def initialize
+    def initialize(internal_loader: InternalFactLoader.new, external_loader: ExternalFactLoader.new)
       @log = Log.new(self)
 
       @internal_facts = []
@@ -14,8 +12,8 @@ module Facter
       @custom_facts = []
       @facts = []
 
-      @internal_loader ||= InternalFactLoader.new
-      @external_fact_loader ||= ExternalFactLoader.new
+      @internal_loader = internal_loader
+      @external_fact_loader = external_loader
     end
 
     def load(user_query, options)

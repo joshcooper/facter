@@ -2,12 +2,13 @@
 
 module Facter
   class FactManager
-    include Singleton
-
-    def initialize
-      @internal_fact_mgr = InternalFactManager.new
-      @external_fact_mgr = ExternalFactManager.new
-      @fact_loader = FactLoader.instance
+    def initialize(fact_loader: FactLoader.new,
+                   internal_fact_manager: InternalFactManager.new,
+                   external_fact_manager: ExternalFactManager.new)
+      @fact_loader = fact_loader
+      @internal_fact_mgr = internal_fact_manager
+      @external_fact_mgr = external_fact_manager
+      # Should not store state
       @options = Options.get
       @log = Log.new(self)
     end
