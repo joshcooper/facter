@@ -514,7 +514,7 @@ module Facter
     private
 
     def fact_manager
-      @fact_manager ||= FactManager.new(fact_loader: FactLoader.new)
+      @fact_manager ||= FactManager.new(fact_loader: FactLoader.new, options: Options.get)
     end
 
     def queried_facts(user_query)

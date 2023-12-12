@@ -4,12 +4,13 @@ module Facter
   class FactManager
     def initialize(fact_loader: FactLoader.new,
                    internal_fact_manager: InternalFactManager.new,
-                   external_fact_manager: ExternalFactManager.new)
+                   external_fact_manager: ExternalFactManager.new,
+                   options: Options.get)
       @fact_loader = fact_loader
       @internal_fact_mgr = internal_fact_manager
       @external_fact_mgr = external_fact_manager
-      # Should not store state
-      @options = Options.get
+      # REMIND: this is actually an OptionsStore
+      @options = options
       @log = Log.new(self)
     end
 
@@ -71,7 +72,7 @@ module Facter
     private
 
     def log_resolving_method
-      if Options[:sequential]
+      if @options[:sequential]
         @log.debugonce('Resolving facts sequentially')
       else
         @log.debugonce('Resolving fact in parallel')
