@@ -3,10 +3,12 @@
 module Facter
   class FactManager
     def initialize(fact_loader: FactLoader.new,
+                   fact_filter: FactFilter.new,
                    internal_fact_manager: InternalFactManager.new,
                    external_fact_manager: ExternalFactManager.new,
                    options: Options.get)
       @fact_loader = fact_loader
+      @fact_filter = fact_filter
       @internal_fact_mgr = internal_fact_manager
       @external_fact_mgr = external_fact_manager
       # REMIND: this is actually an OptionsStore
@@ -30,7 +32,7 @@ module Facter
       resolved_facts.concat(cached_facts)
       cache_manager.cache_facts(resolved_facts)
 
-      FactFilter.new.filter_facts!(resolved_facts, user_query)
+      @fact_filter.filter_facts!(resolved_facts, user_query)
 
       log_resolved_facts(resolved_facts)
       resolved_facts
@@ -88,7 +90,7 @@ module Facter
       resolved_facts = @internal_fact_mgr.resolve_facts(searched_facts)
       resolved_facts.concat(cached_facts)
 
-      FactFilter.new.filter_facts!(resolved_facts, user_query)
+      @fact_filter.filter_facts!(resolved_facts, user_query)
 
       resolved_facts
     end
