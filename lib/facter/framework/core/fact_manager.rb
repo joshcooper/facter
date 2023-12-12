@@ -22,7 +22,8 @@ module Facter
       log_resolving_method
       @options[:user_query] = user_query
 
-      searched_facts = QueryParser.parse(user_query, @fact_loader.load(user_query, @options))
+      query_parser = QueryParser.new(user_query)
+      searched_facts = query_parser.parse(@fact_loader.load(user_query, @options))
 
       searched_facts, cached_facts = @cache_manager.resolve_facts(searched_facts)
       internal_facts = @internal_fact_mgr.resolve_facts(searched_facts)
@@ -82,7 +83,8 @@ module Facter
     def core_fact(user_query, options)
       loaded_facts_hash = @fact_loader.load_internal_facts(user_query, options)
 
-      searched_facts = QueryParser.parse(user_query, loaded_facts_hash)
+      query_parser = QueryParser.new(user_query)
+      searched_facts = query_parser.parse(loaded_facts_hash)
       searched_facts, cached_facts = @cache_manager.resolve_facts(searched_facts)
 
       resolved_facts = @internal_fact_mgr.resolve_facts(searched_facts)
@@ -135,7 +137,8 @@ module Facter
 
     def parse_user_query(loaded_facts, user_query)
       user_query = Array(user_query)
-      QueryParser.parse(user_query, loaded_facts)
+      query_parser = QueryParser.new(user_query)
+      query_parser.parse(loaded_facts)
     end
 
     def override_core_facts(core_facts, custom_facts)

@@ -15,9 +15,11 @@ describe Facter::FactManager do
   let(:cache_manager) { instance_spy(Facter::CacheManager) }
   let(:fact_loader) { instance_double(Facter::FactLoader) }
   let(:logger) { instance_spy(Facter::Log) }
+  let(:query_parser) { instance_spy(Facter::QueryParser) }
 
-  def stub_query_parser(withs, returns)
-    allow(Facter::QueryParser).to receive(:parse).with(*withs).and_return(returns)
+  def stub_query_parser(query, facts, returns)
+    allow(Facter::QueryParser).to receive(:new).with(query).and_return(query_parser)
+    allow(query_parser).to receive(:parse).with(facts).and_return(returns)
   end
 
   def stub_internal_manager(withs, returns)
@@ -67,7 +69,7 @@ describe Facter::FactManager do
 
     before do
       allow(fact_loader).to receive(:load).and_return(loaded_facts)
-      stub_query_parser([user_query, loaded_facts], searched_facts)
+      stub_query_parser(user_query, loaded_facts, searched_facts)
       stub_internal_manager(searched_facts, [resolved_fact])
       stub_external_manager(searched_facts, nil)
       stub_cache_manager(searched_facts, [])
@@ -104,7 +106,7 @@ describe Facter::FactManager do
         before do
           # mock custom_fact_by_filename to return resolved_fact
           allow(fact_loader).to receive(:load_custom_fact).and_return(loaded_facts)
-          stub_query_parser([[user_query], loaded_facts], searched_facts)
+          stub_query_parser([user_query], loaded_facts, searched_facts)
           stub_internal_manager(searched_facts, [resolved_fact])
           stub_external_manager(searched_facts, [resolved_fact])
           stub_cache_manager(searched_facts, [])
@@ -112,7 +114,7 @@ describe Facter::FactManager do
           # mock core_or_external_fact to return nil
           allow(fact_loader).to receive(:load_internal_facts).and_return([])
           allow(fact_loader).to receive(:load_external_facts).and_return([])
-          stub_query_parser([[user_query], []], [])
+          stub_query_parser([user_query], [], [])
           stub_internal_manager([], [])
           stub_external_manager([], [])
           stub_cache_manager([], [])
@@ -150,21 +152,21 @@ describe Facter::FactManager do
         before do
           # mock custom_fact_by_filename to return nil
           allow(fact_loader).to receive(:load_custom_fact).and_return([])
-          stub_query_parser([[user_query], []], [])
+          stub_query_parser([user_query], [], [])
           stub_external_manager(searched_facts, [])
           stub_cache_manager([], [])
 
           # mock core_or_external_fact to return nil
           allow(fact_loader).to receive(:load_internal_facts).and_return([])
           allow(fact_loader).to receive(:load_external_facts).and_return([])
-          stub_query_parser([[user_query], []], [])
+          stub_query_parser([user_query], [], [])
           stub_internal_manager([], [])
           stub_external_manager([], [])
           stub_cache_manager([], [])
 
           # mock all_custom_facts to return resolved_fact
           allow(fact_loader).to receive(:load_custom_facts).and_return(loaded_facts)
-          stub_query_parser([[user_query], loaded_facts], searched_facts)
+          stub_query_parser([user_query], loaded_facts, searched_facts)
           stub_external_manager(searched_facts, [resolved_fact])
           stub_cache_manager(searched_facts, [])
         end
@@ -201,7 +203,7 @@ describe Facter::FactManager do
         before do
           # mock custom_fact_by_filename to return cached_fact
           allow(fact_loader).to receive(:load_custom_fact).and_return(loaded_facts)
-          stub_query_parser([[user_query], loaded_facts], searched_facts)
+          stub_query_parser([user_query], loaded_facts, searched_facts)
           stub_internal_manager(searched_facts, [])
           stub_external_manager(searched_facts, [])
           stub_cache_manager(searched_facts, cached_fact)
@@ -209,7 +211,7 @@ describe Facter::FactManager do
           # mock core_or_external_fact to return nil
           allow(fact_loader).to receive(:load_internal_facts).and_return([])
           allow(fact_loader).to receive(:load_external_facts).and_return([])
-          stub_query_parser([[user_query], []], [])
+          stub_query_parser([user_query], [], [])
           stub_internal_manager([], [])
           stub_external_manager([], [])
           stub_cache_manager([], [])
@@ -258,14 +260,14 @@ describe Facter::FactManager do
       before do
         # mock custom_fact_by_filename to return nil
         allow(fact_loader).to receive(:load_custom_fact).and_return([])
-        stub_query_parser([[user_query], []], [])
+        stub_query_parser([user_query], [], [])
         stub_external_manager(searched_facts, [])
         stub_cache_manager([], [])
 
         # mock core_or_external_fact to return the core resolved_fact
         allow(fact_loader).to receive(:load_internal_facts).and_return(loaded_facts)
         allow(fact_loader).to receive(:load_external_facts).and_return([])
-        stub_query_parser([[user_query], loaded_facts], searched_facts)
+        stub_query_parser([user_query], loaded_facts, searched_facts)
         stub_internal_manager(searched_facts, [resolved_fact])
         stub_external_manager([], [])
         stub_cache_manager(searched_facts, [])
@@ -335,21 +337,21 @@ describe Facter::FactManager do
       before do
         # mock custom_fact_by_filename to return nil
         allow(fact_loader).to receive(:load_custom_fact).and_return([])
-        stub_query_parser([[user_query], []], [])
+        stub_query_parser([user_query], [], [])
         stub_external_manager([], [])
         stub_cache_manager([], [])
 
         # mock core_or_external_fact to return nil
         allow(fact_loader).to receive(:load_internal_facts).and_return([])
         allow(fact_loader).to receive(:load_external_facts).and_return([])
-        stub_query_parser([[user_query], []], [])
+        stub_query_parser(user_query, [], [])
         stub_internal_manager([], [])
         stub_external_manager([], [])
         stub_cache_manager([], [])
 
         # mock all_custom_facts to return nil
         allow(fact_loader).to receive(:load_custom_facts).and_return([])
-        stub_query_parser([[user_query], []], [])
+        stub_query_parser(user_query, [], [])
         stub_external_manager([], [])
         stub_cache_manager([], [])
       end
@@ -403,7 +405,7 @@ describe Facter::FactManager do
       allow(fact_loader).to receive(:internal_facts).and_return(loaded_facts)
       allow(fact_loader).to receive(:load_external_facts).and_return([])
 
-      stub_query_parser([user_query, loaded_facts], [searched_fact])
+      stub_query_parser(user_query, loaded_facts, [searched_fact])
       stub_internal_manager([searched_fact], [resolved_fact])
       stub_cache_manager([searched_fact], [])
 

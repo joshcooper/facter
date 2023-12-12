@@ -13,7 +13,7 @@ describe Facter::QueryParser do
                                                                   file: nil)
       loaded_facts = [loaded_fact_os_name, loaded_fact_os_family]
 
-      matched_facts = Facter::QueryParser.parse(query_list, loaded_facts)
+      matched_facts = Facter::QueryParser.new(query_list).parse(loaded_facts)
 
       expect(matched_facts).to be_an_instance_of(Array).and \
         contain_exactly(an_instance_of(Facter::SearchedFact).and(having_attributes(fact_class: os_name_class)))
@@ -31,7 +31,7 @@ describe Facter::QueryParser do
                                                                   file: nil)
       loaded_facts = [loaded_fact_networking, loaded_fact_os_family]
 
-      matched_facts = Facter::QueryParser.parse(query_list, loaded_facts)
+      matched_facts = Facter::QueryParser.new(query_list).parse(loaded_facts)
 
       expect(matched_facts).to be_an_instance_of(Array).and \
         contain_exactly(an_instance_of(Facter::SearchedFact).and(having_attributes(fact_class: networking_class)))
@@ -47,7 +47,7 @@ describe Facter::QueryParser do
       loaded_fact_ssh = instance_spy(Facter::LoadedFact, name: 'ssh', klass: ssh_class, type: :core)
       loaded_facts = [loaded_fact_ssh_key, loaded_fact_ssh]
 
-      matched_facts = Facter::QueryParser.parse(query_list, loaded_facts)
+      matched_facts = Facter::QueryParser.new(query_list).parse(loaded_facts)
 
       expect(matched_facts).to be_an_instance_of(Array).and \
         contain_exactly(an_instance_of(Facter::SearchedFact).and(having_attributes(fact_class: ssh_class)))
@@ -61,7 +61,7 @@ describe Facter::QueryParser do
       loaded_fact_custom_fact = instance_double(Facter::LoadedFact, name: 'custom_fact', klass: nil, type: :custom, file: nil)
       loaded_facts = [loaded_fact_os_name, loaded_fact_custom_fact]
 
-      matched_facts = Facter::QueryParser.parse(query_list, loaded_facts)
+      matched_facts = Facter::QueryParser.new(query_list).parse(loaded_facts)
 
       expect(matched_facts).to be_an_instance_of(Array).and \
         contain_exactly(an_instance_of(Facter::SearchedFact).and(having_attributes(fact_class: nil, type: :custom)))
@@ -73,7 +73,7 @@ describe Facter::QueryParser do
       loaded_fact_path = instance_double(Facter::LoadedFact, name: 'path', klass: path_class, type: :core, file: nil)
       loaded_facts = [loaded_fact_path]
 
-      matched_facts = Facter::QueryParser.parse(query_list, loaded_facts)
+      matched_facts = Facter::QueryParser.new(query_list).parse(loaded_facts)
 
       expect(matched_facts).to be_an_instance_of(Array).and \
         contain_exactly(an_instance_of(Facter::SearchedFact).and(having_attributes(fact_class: path_class)))
@@ -89,7 +89,7 @@ describe Facter::QueryParser do
                                                                    type: :legacy, file: nil)
         loaded_facts = [loaded_fact_ldom, ldom_fact_ldom_alias]
 
-        matched_facts = Facter::QueryParser.parse(query_list, loaded_facts)
+        matched_facts = Facter::QueryParser.new(query_list).parse(loaded_facts)
 
         expect(matched_facts).to be_an_instance_of(Array).and \
           contain_exactly(an_instance_of(Facter::SearchedFact)
@@ -103,7 +103,7 @@ describe Facter::QueryParser do
       let(:loaded_facts) { [] }
 
       it 'creates a nil fact' do
-        matched_facts = Facter::QueryParser.parse(query_list, loaded_facts)
+        matched_facts = Facter::QueryParser.new(query_list).parse(loaded_facts)
         expect(matched_facts).to be_an_instance_of(Array).and contain_exactly(
           an_object_having_attributes(name: 'non_existing_fact', user_query: 'non_existing_fact', type: :nil)
         )
@@ -115,7 +115,7 @@ describe Facter::QueryParser do
       let(:loaded_facts) { [instance_double(Facter::LoadedFact, name: 'a_loaded_fact', klass: nil, type: :custom, file: nil)] }
 
       it 'is escaped correctly and does not result in an unexpected regex parse error' do
-        matched_facts = Facter::QueryParser.parse(query_list, loaded_facts)
+        matched_facts = Facter::QueryParser.new(query_list).parse(loaded_facts)
         expect(matched_facts).to be_an_instance_of(Array).and contain_exactly(
           an_object_having_attributes(name: 'regex(string', user_query: 'regex(string', type: :nil)
         )
