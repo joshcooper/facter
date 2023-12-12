@@ -6,11 +6,13 @@ module Facter
                    fact_filter: FactFilter.new,
                    internal_fact_manager: InternalFactManager.new,
                    external_fact_manager: ExternalFactManager.new,
+                   cache_manager: CacheManager.new,
                    options: Options.get)
       @fact_loader = fact_loader
       @fact_filter = fact_filter
       @internal_fact_mgr = internal_fact_manager
       @external_fact_mgr = external_fact_manager
+      @cache_manager = cache_manager
       # REMIND: this is actually an OptionsStore
       @options = options
       @log = Log.new(self)
@@ -19,18 +21,17 @@ module Facter
     def resolve_facts(user_query = [])
       log_resolving_method
       @options[:user_query] = user_query
-      cache_manager = Facter::CacheManager.new
 
       searched_facts = QueryParser.parse(user_query, @fact_loader.load(user_query, @options))
 
-      searched_facts, cached_facts = cache_manager.resolve_facts(searched_facts)
+      searched_facts, cached_facts = @cache_manager.resolve_facts(searched_facts)
       internal_facts = @internal_fact_mgr.resolve_facts(searched_facts)
       external_facts = @external_fact_mgr.resolve_facts(searched_facts)
 
       resolved_facts = override_core_facts(internal_facts, external_facts)
 
       resolved_facts.concat(cached_facts)
-      cache_manager.cache_facts(resolved_facts)
+      @cache_manager.cache_facts(resolved_facts)
 
       @fact_filter.filter_facts!(resolved_facts, user_query)
 
@@ -49,8 +50,6 @@ module Facter
       @options[:user_query] = user_query
       @log.debug("resolving fact with user_query: #{user_query}")
 
-      @cache_manager = Facter::CacheManager.new
-
       custom_facts = custom_fact_by_filename(user_query) || []
       core_and_external_facts = core_or_external_fact(user_query) || []
       resolved_facts = core_and_external_facts + custom_facts
@@ -67,7 +66,6 @@ module Facter
 
     def resolve_core(user_query = [], options = {})
       log_resolving_method
-      @cache_manager = CacheManager.new
       core_fact(user_query, options)
     end
 

@@ -5,7 +5,8 @@ describe Facter::FactManager do
     Facter::FactManager.new(
       fact_loader: fact_loader,
       internal_fact_manager: internal_manager,
-      external_fact_manager: external_manager
+      external_fact_manager: external_manager,
+      cache_manager: cache_manager
     )
   end
 
@@ -34,7 +35,6 @@ describe Facter::FactManager do
 
   before do
     allow(Facter::Log).to receive(:new).and_return(logger)
-    allow(Facter::CacheManager).to receive(:new).and_return(cache_manager)
   end
 
   describe '#resolve_facts' do
