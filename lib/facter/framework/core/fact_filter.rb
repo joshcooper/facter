@@ -19,9 +19,12 @@ module Facter
 
     def filter_blocked_legacy_facts!(facts)
       blocked_facts = @options[:blocked_facts] || []
+      return if blocked_facts.empty?
 
       facts.reject! do |fact|
-        blocked_facts.select { |blocked_fact| fact.name.match(/^#{blocked_fact}/) && fact.type == :legacy }.any?
+        next unless fact.type == :legacy
+
+        blocked_facts.select { |blocked_fact| fact.name.start_with?(blocked_fact) }.any?
       end
     end
 
