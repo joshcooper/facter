@@ -132,7 +132,8 @@ module Facter
     # @api private
     def core_value(user_query)
       user_query = user_query.to_s
-      resolved_facts = fact_manager.resolve_core([user_query])
+      query_parser = QueryParser.new([user_query])
+      resolved_facts = fact_manager.resolve_core(query_parser, user_query)
       fact_collection = FactCollection.new.build_fact_collection!(resolved_facts)
       splitted_user_query = Facter::Utils.split_user_query(user_query)
       fact_collection.dig(*splitted_user_query)
@@ -572,8 +573,9 @@ module Facter
     #
     # @return [ResolvedFact]
     def resolve_fact(user_query)
-      user_query = user_query.to_s
-      resolved_facts = fact_manager.resolve_fact(user_query)
+      fact_name = user_query.to_s
+      query_parser = QueryParser.new([user_query])
+      resolved_facts = fact_manager.resolve_fact(query_parser, fact_name)
       # we must make a distinction between custom facts that return nil and nil facts
       # Nil facts should not be packaged as ResolvedFacts! (add_fact_to_searched_facts packages facts)
       resolved_facts = resolved_facts.reject { |fact| fact.type == :nil }

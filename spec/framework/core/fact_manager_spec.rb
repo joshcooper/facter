@@ -20,6 +20,7 @@ describe Facter::FactManager do
   def stub_query_parser(query, facts, returns)
     allow(Facter::QueryParser).to receive(:new).with(query).and_return(query_parser)
     allow(query_parser).to receive(:parse).with(facts).and_return(returns)
+    allow(query_parser).to receive(:query_list).and_return([query])
   end
 
   def stub_internal_manager(withs, returns)
@@ -88,6 +89,7 @@ describe Facter::FactManager do
       let(:fact_name) { 'custom_fact' }
       let(:custom_fact) { instance_double(Facter::LoadedFact, name: fact_name, klass: nil, type: :custom) }
       let(:loaded_facts) { [custom_fact] }
+      let(:query_parser) { Facter::QueryParser.new(user_query) }
 
       let(:searched_facts) do
         [
@@ -121,28 +123,28 @@ describe Facter::FactManager do
         end
 
         it 'tries to load it from fact_name.rb' do
-          fact_manager.resolve_fact(user_query)
+          fact_manager.resolve_fact(query_parser, user_query)
 
           expect(logger).to have_received(:debug)
             .with("Searching fact: #{user_query} in file: #{user_query}.rb")
         end
 
         it 'loads core and external facts' do
-          fact_manager.resolve_fact(user_query)
+          fact_manager.resolve_fact(query_parser, user_query)
 
           expect(logger).to have_received(:debug)
             .with("Searching fact: #{user_query} in core facts and external facts")
         end
 
         it 'does not load all custom facts' do
-          fact_manager.resolve_fact(user_query)
+          fact_manager.resolve_fact(query_parser, user_query)
 
           expect(logger).not_to have_received(:debug)
             .with("Searching fact: #{user_query} in all custom facts")
         end
 
         it 'resolves fact' do
-          resolved_facts = fact_manager.resolve_fact(user_query)
+          resolved_facts = fact_manager.resolve_fact(query_parser, user_query)
 
           expect(resolved_facts).to eql([resolved_fact])
         end
@@ -172,28 +174,28 @@ describe Facter::FactManager do
         end
 
         it 'tries to load it from fact_name.rb' do
-          fact_manager.resolve_fact(user_query)
+          fact_manager.resolve_fact(query_parser, user_query)
 
           expect(logger).to have_received(:debug)
             .with("Searching fact: #{user_query} in file: #{user_query}.rb")
         end
 
         it 'loads core and external facts' do
-          fact_manager.resolve_fact(user_query)
+          fact_manager.resolve_fact(query_parser, user_query)
 
           expect(logger).to have_received(:debug)
             .with("Searching fact: #{user_query} in core facts and external facts")
         end
 
         it 'loads all custom facts' do
-          fact_manager.resolve_fact(user_query)
+          fact_manager.resolve_fact(query_parser, user_query)
 
           expect(logger).to have_received(:debug)
             .with("Searching fact: #{user_query} in all custom facts")
         end
 
         it 'resolves fact' do
-          resolved_facts = fact_manager.resolve_fact(user_query)
+          resolved_facts = fact_manager.resolve_fact(query_parser, user_query)
 
           expect(resolved_facts).to eql([resolved_fact])
         end
@@ -218,7 +220,7 @@ describe Facter::FactManager do
         end
 
         it 'returns the cached fact' do
-          resolved_facts = fact_manager.resolve_fact(user_query)
+          resolved_facts = fact_manager.resolve_fact(query_parser, user_query)
 
           expect(resolved_facts).to eql([cached_fact])
         end
@@ -274,28 +276,28 @@ describe Facter::FactManager do
       end
 
       it 'tries to load it from fact_name.rb' do
-        fact_manager.resolve_fact(user_query)
+        fact_manager.resolve_fact(query_parser, user_query)
 
         expect(logger).to have_received(:debug)
           .with("Searching fact: #{user_query} in file: #{user_query}.rb")
       end
 
       it 'loads core and external facts' do
-        fact_manager.resolve_fact(user_query)
+        fact_manager.resolve_fact(query_parser, user_query)
 
         expect(logger).to have_received(:debug)
           .with("Searching fact: #{user_query} in core facts and external facts")
       end
 
       it 'does not load all custom facts' do
-        fact_manager.resolve_fact(user_query)
+        fact_manager.resolve_fact(query_parser, user_query)
 
         expect(logger).not_to have_received(:debug)
           .with("Searching fact: #{user_query} in all custom facts")
       end
 
       it 'resolves fact' do
-        resolved_facts = fact_manager.resolve_fact(user_query)
+        resolved_facts = fact_manager.resolve_fact(query_parser, user_query)
 
         expect(resolved_facts).to eql([resolved_fact])
       end
@@ -310,7 +312,7 @@ describe Facter::FactManager do
         end
 
         it 'does not resolve fact' do
-          resolved_facts = fact_manager.resolve_fact(user_query)
+          resolved_facts = fact_manager.resolve_fact(query_parser, user_query)
           expect(resolved_facts).to be_empty
         end
       end
@@ -320,7 +322,7 @@ describe Facter::FactManager do
         let(:resolved_fact) { mock_resolved_fact('fips_enabled', false, 'fips_enabled', :core) }
 
         it 'resolves fact to false' do
-          resolved_facts = fact_manager.resolve_fact(user_query)
+          resolved_facts = fact_manager.resolve_fact(query_parser, user_query)
           expect(resolved_facts.first.value).to be(false)
         end
       end
@@ -357,28 +359,28 @@ describe Facter::FactManager do
       end
 
       it 'tries to load it from fact_name.rb' do
-        fact_manager.resolve_fact(user_query)
+        fact_manager.resolve_fact(query_parser, user_query)
 
         expect(logger).to have_received(:debug)
           .with("Searching fact: #{user_query} in file: #{user_query}.rb")
       end
 
       it 'loads core and external facts' do
-        fact_manager.resolve_fact(user_query)
+        fact_manager.resolve_fact(query_parser, user_query)
 
         expect(logger).to have_received(:debug)
           .with("Searching fact: #{user_query} in core facts and external facts")
       end
 
       it 'loads all custom facts' do
-        fact_manager.resolve_fact(user_query)
+        fact_manager.resolve_fact(query_parser, user_query)
 
         expect(logger).to have_received(:debug)
           .with("Searching fact: #{user_query} in all custom facts")
       end
 
       it 'resolves fact' do
-        resolved_facts = fact_manager.resolve_fact(user_query)
+        resolved_facts = fact_manager.resolve_fact(query_parser, user_query)
 
         expect(resolved_facts).to eql([])
       end
@@ -409,7 +411,7 @@ describe Facter::FactManager do
       stub_internal_manager([searched_fact], [resolved_fact])
       stub_cache_manager([searched_fact], [])
 
-      resolved_facts = fact_manager.resolve_core(user_query)
+      resolved_facts = fact_manager.resolve_core(query_parser, user_query)
 
       expect(resolved_facts).to eq([resolved_fact])
     end

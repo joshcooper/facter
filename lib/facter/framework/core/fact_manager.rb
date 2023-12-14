@@ -44,16 +44,16 @@ module Facter
     # - load the `fact_name.rb` from the configured custom directories
     # - load all the core facts, external facts and env facts
     # - load all custom facts
-    def resolve_fact(user_query)
+    def resolve_fact(query_parser, fact_name)
       log_resolving_method
-      @log.debug("resolving fact with user_query: #{user_query}")
+      @log.debug("resolving fact with user_query: #{fact_name}")
 
-      custom_facts = custom_fact_by_filename(user_query) || []
-      core_and_external_facts = core_or_external_fact(user_query) || []
+      custom_facts = custom_fact_by_filename(query_parser, fact_name) || []
+      core_and_external_facts = core_or_external_fact(query_parser, fact_name) || []
       resolved_facts = core_and_external_facts + custom_facts
 
-      if resolved_facts.empty? || resolved_facts.none? { |rf| rf.resolves?(user_query) }
-        resolved_facts.concat(all_custom_facts(user_query))
+      if resolved_facts.empty? || resolved_facts.none? { |rf| rf.resolves?(fact_name) }
+        resolved_facts.concat(all_custom_facts(query_parser, fact_name))
       end
 
       @cache_manager.cache_facts(resolved_facts)
@@ -62,9 +62,9 @@ module Facter
       resolved_facts
     end
 
-    def resolve_core(user_query = [], options = {})
+    def resolve_core(query_parser, fact_name, options = {})
       log_resolving_method
-      core_fact(user_query, options)
+      core_fact(query_parser, fact_name, options)
     end
 
     private
@@ -77,28 +77,28 @@ module Facter
       end
     end
 
-    def core_fact(user_query, options)
-      loaded_facts_hash = @fact_loader.load_internal_facts(user_query.empty?, options)
+    def core_fact(query_parser, fact_name, options)
+      empty_user_query = query_parser.query_list.empty?
+      loaded_facts_hash = @fact_loader.load_internal_facts(empty_user_query, options)
 
-      query_parser = QueryParser.new(user_query)
       searched_facts = query_parser.parse(loaded_facts_hash)
       searched_facts, cached_facts = @cache_manager.resolve_facts(searched_facts)
 
       resolved_facts = @internal_fact_mgr.resolve_facts(searched_facts)
       resolved_facts.concat(cached_facts)
 
-      @fact_filter.filter_facts!(resolved_facts, user_query.empty?)
+      @fact_filter.filter_facts!(resolved_facts, empty_user_query)
 
       resolved_facts
     end
 
-    def custom_fact_by_filename(user_query)
-      @log.debug("Searching fact: #{user_query} in file: #{user_query}.rb")
+    def custom_fact_by_filename(query_parser, fact_name)
+      @log.debug("Searching fact: #{fact_name} in file: #{fact_name}.rb")
 
-      custom_fact = @fact_loader.load_custom_fact(@options, user_query)
+      custom_fact = @fact_loader.load_custom_fact(@options, fact_name)
       return unless custom_fact.any?
 
-      searched_facts = parse_user_query(custom_fact, user_query)
+      searched_facts = query_parser.parse(custom_fact)
       searched_facts, cached_facts = @cache_manager.resolve_facts(searched_facts)
 
       resolved_facts = @external_fact_mgr.resolve_facts(searched_facts)
@@ -106,12 +106,12 @@ module Facter
       resolved_facts if resolved_facts.any?
     end
 
-    def core_or_external_fact(user_query)
-      @log.debug("Searching fact: #{user_query} in core facts and external facts")
+    def core_or_external_fact(query_parser, fact_name)
+      @log.debug("Searching fact: #{fact_name} in core facts and external facts")
 
-      core_facts = core_fact([user_query], @options)
+      core_facts = core_fact(query_parser, fact_name, @options)
       external_facts = @fact_loader.load_external_facts(@options)
-      searched_facts = parse_user_query(external_facts, user_query)
+      searched_facts = query_parser.parse(external_facts)
       searched_facts, cached_facts = @cache_manager.resolve_facts(searched_facts)
 
       resolved_facts = @external_fact_mgr.resolve_facts(searched_facts)
@@ -121,21 +121,15 @@ module Facter
       resolved_facts unless resolved_facts.map(&:value).compact.empty?
     end
 
-    def all_custom_facts(user_query)
-      @log.debug("Searching fact: #{user_query} in all custom facts")
+    def all_custom_facts(query_parser, fact_name)
+      @log.debug("Searching fact: #{fact_name} in all custom facts")
 
       custom_facts = @fact_loader.load_custom_facts(@options)
-      searched_facts = parse_user_query(custom_facts, user_query)
+      searched_facts = query_parser.parse(custom_facts)
       searched_facts, cached_facts = @cache_manager.resolve_facts(searched_facts)
 
       resolved_facts = @external_fact_mgr.resolve_facts(searched_facts)
       resolved_facts.concat(cached_facts)
-    end
-
-    def parse_user_query(loaded_facts, user_query)
-      user_query = Array(user_query)
-      query_parser = QueryParser.new(user_query)
-      query_parser.parse(loaded_facts)
     end
 
     def override_core_facts(core_facts, custom_facts)

@@ -211,7 +211,7 @@ describe Facter do
     end
 
     it 'resolves facts once' do
-      expect(fact_manager).to receive(:resolve_fact).with('os.name').once.and_return([os_fact])
+      expect(fact_manager).to receive(:resolve_fact).with(anything, 'os.name').once.and_return([os_fact])
 
       Facter.value('os.name')
       Facter.value('os.name')
@@ -226,7 +226,7 @@ describe Facter do
     context 'when fact value is false' do
       it 'resolves facts once' do
         boolean_fact = Facter::ResolvedFact.new('boolean', false, :core, '')
-        expect(fact_manager).to receive(:resolve_fact).with('boolean').once.and_return([boolean_fact])
+        expect(fact_manager).to receive(:resolve_fact).with(anything, 'boolean').once.and_return([boolean_fact])
 
         Facter.value('boolean')
         Facter.value('boolean')
@@ -313,13 +313,19 @@ describe Facter do
 
   describe '#core_value' do
     it 'searched in core facts and returns a value' do
-      allow(fact_manager).to receive(:resolve_core).with(['os.name']).and_return([os_fact])
+      allow(fact_manager).to receive(:resolve_core) do |query, fact_name|
+        expect(query.query_list).to eq(['os.name'])
+        expect(fact_name).to eq('os.name')
+      end.and_return([os_fact])
 
       expect(Facter.core_value('os.name')).to eq('ubuntu')
     end
 
     it 'searches os core fact and returns nil' do
-      allow(fact_manager).to receive(:resolve_core).with(['os.name']).and_return([])
+      allow(fact_manager).to receive(:resolve_core) do |query, fact_name|
+        expect(query.query_list).to eq(['os.name'])
+        expect(fact_name).to eq('os.name')
+      end.and_return([])
 
       expect(Facter.core_value('os.name')).to be nil
     end

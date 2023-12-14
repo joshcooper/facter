@@ -2,10 +2,12 @@
 
 module Facter
   class QueryParser
+    attr_reader :query_list
+
     # Create a query parser.
     #
     # @param query_list [Array] The list of facts to search for
-    def initialize(query_list)
+    def initialize(query_list = [])
       @query_list = query_list
       @log = Log.new(self)
     end
