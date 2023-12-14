@@ -77,7 +77,7 @@ describe Facter::FactManager do
     end
 
     it 'resolved all facts' do
-      resolved_facts = fact_manager.resolve_facts(user_query)
+      resolved_facts = fact_manager.resolve_facts(query_parser)
 
       expect(resolved_facts).to eq([resolved_fact])
     end

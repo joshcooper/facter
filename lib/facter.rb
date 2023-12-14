@@ -263,7 +263,8 @@ module Facter
     # @api public
     def each
       log_blocked_facts
-      resolved_facts = fact_manager.resolve_facts
+      query_parser = QueryParser.new
+      resolved_facts = fact_manager.resolve_facts(query_parser)
 
       resolved_facts.each do |fact|
         yield(fact.name, fact.value)
@@ -379,7 +380,8 @@ module Facter
       log_blocked_facts
       logger.debug("Facter version: #{Facter::VERSION}")
 
-      resolved_facts = fact_manager.resolve_facts
+      query_parser = QueryParser.new
+      resolved_facts = fact_manager.resolve_facts(query_parser)
       resolved_facts.reject! { |fact| fact.type == :custom && fact.value.nil? }
       collection = Facter::FactCollection.new.build_fact_collection!(resolved_facts)
 
@@ -533,7 +535,8 @@ module Facter
     end
 
     def resolve_facts_for_user_query(user_query)
-      resolved_facts = fact_manager.resolve_facts(user_query)
+      query_parser = QueryParser.new(user_query)
+      resolved_facts = fact_manager.resolve_facts(query_parser)
       user_querie = resolved_facts.uniq(&:user_query).map(&:user_query).first
 
       resolved_facts.reject! { |fact| fact.type == :custom && fact.value.nil? } if user_querie&.empty?

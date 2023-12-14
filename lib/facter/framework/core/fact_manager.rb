@@ -18,10 +18,10 @@ module Facter
       @log = Log.new(self)
     end
 
-    def resolve_facts(user_query = [])
+    def resolve_facts(query_parser)
       log_resolving_method
-      query_parser = QueryParser.new(user_query)
-      searched_facts = query_parser.parse(@fact_loader.load(user_query.empty?, @options))
+      empty_query_list = query_parser.query_list.empty?
+      searched_facts = query_parser.parse(@fact_loader.load(empty_query_list, @options))
 
       searched_facts, cached_facts = @cache_manager.resolve_facts(searched_facts)
       internal_facts = @internal_fact_mgr.resolve_facts(searched_facts)
@@ -32,7 +32,7 @@ module Facter
       resolved_facts.concat(cached_facts)
       @cache_manager.cache_facts(resolved_facts)
 
-      @fact_filter.filter_facts!(resolved_facts, user_query.empty?)
+      @fact_filter.filter_facts!(resolved_facts, empty_query_list)
 
       log_resolved_facts(resolved_facts)
       resolved_facts
