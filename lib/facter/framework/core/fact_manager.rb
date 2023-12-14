@@ -79,9 +79,9 @@ module Facter
 
     def core_fact(query_parser, fact_name, options)
       empty_user_query = query_parser.query_list.empty?
-      loaded_facts_hash = @fact_loader.load_internal_facts(empty_user_query, options)
+      loaded_facts = @fact_loader.load_internal_facts(empty_user_query, options)
 
-      searched_facts = query_parser.parse(loaded_facts_hash)
+      searched_facts = query_parser.parse(loaded_facts)
       searched_facts, cached_facts = @cache_manager.resolve_facts(searched_facts)
 
       resolved_facts = @internal_fact_mgr.resolve_facts(searched_facts)
