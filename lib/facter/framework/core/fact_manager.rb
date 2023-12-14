@@ -20,8 +20,6 @@ module Facter
 
     def resolve_facts(user_query = [])
       log_resolving_method
-      @options[:user_query] = user_query
-
       query_parser = QueryParser.new(user_query)
       searched_facts = query_parser.parse(@fact_loader.load(user_query.empty?, @options))
 
@@ -48,7 +46,6 @@ module Facter
     # - load all custom facts
     def resolve_fact(user_query)
       log_resolving_method
-      @options[:user_query] = user_query
       @log.debug("resolving fact with user_query: #{user_query}")
 
       custom_facts = custom_fact_by_filename(user_query) || []

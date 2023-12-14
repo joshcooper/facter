@@ -29,15 +29,13 @@ describe Facter::FactLoader do
     end
 
     it 'loads all internal facts' do
-      options = { user_query: true }
-
       facts_to_load = [loaded_fact_os_name, loaded_fact_networking]
 
       allow(internal_fact_loader_double).to receive(:facts).and_return(facts_to_load)
       allow(external_fact_loader_double).to receive(:custom_facts).and_return([])
       allow(external_fact_loader_double).to receive(:external_facts).and_return([])
 
-      loaded_facts = fact_loader.load(false, options)
+      loaded_facts = fact_loader.load(false, {})
       expect(loaded_facts).to eq(facts_to_load)
     end
 
@@ -98,16 +96,14 @@ describe Facter::FactLoader do
     end
 
     it 'loads the same amount of core facts everytime' do
-      options = { user_query: true }
-
       facts_to_load = [loaded_fact_os_name, loaded_fact_networking]
 
       allow(internal_fact_loader_double).to receive(:facts).and_return(facts_to_load)
       allow(external_fact_loader_double).to receive(:custom_facts).and_return([])
       allow(external_fact_loader_double).to receive(:external_facts).and_return([])
 
-      loaded_facts1 = fact_loader.load(false, options)
-      loaded_facts2 = fact_loader.load(false, options)
+      loaded_facts1 = fact_loader.load(false, {})
+      loaded_facts2 = fact_loader.load(false, {})
       expect(loaded_facts1).to eq(loaded_facts2)
     end
 
