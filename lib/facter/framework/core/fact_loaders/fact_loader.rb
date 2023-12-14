@@ -16,8 +16,8 @@ module Facter
       @external_fact_loader = external_loader
     end
 
-    def load(user_query, options)
-      @internal_facts = load_internal_facts(user_query, options)
+    def load(empty_user_query, options)
+      @internal_facts = load_internal_facts(empty_user_query, options)
       @custom_facts = load_custom_facts(options)
       if ENV['INSIDE_FACTER']
         @log.debug('INSIDE_FACTER env var detected, not loading external facts to prevent recursion')
@@ -38,9 +38,9 @@ module Facter
       @facts = @internal_facts + @external_facts + @custom_facts
     end
 
-    def load_internal_facts(user_query, options)
+    def load_internal_facts(empty_user_query, options)
       internal_facts = []
-      if user_query || options[:show_legacy]
+      if !empty_user_query || options[:show_legacy]
         # if we have a user query, then we must search in core facts and legacy facts
         @log.debug('Loading all internal facts')
         internal_facts = @internal_loader.facts

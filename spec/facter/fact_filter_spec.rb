@@ -17,14 +17,14 @@ describe Facter::FactFilter do
 
       it 'filters blocked legacy facts' do
         fact_filter_input = [resolved_fact]
-        fact_filter.filter_facts!(fact_filter_input, [])
+        fact_filter.filter_facts!(fact_filter_input, true)
         expect(fact_filter_input).to eq([])
       end
 
       context 'when user_query is provided' do
         it 'does not filter out the requested fact' do
           fact_filter_input = [resolved_fact]
-          result = fact_filter.filter_facts!([resolved_fact], ['my_fact'])
+          result = fact_filter.filter_facts!([resolved_fact], false)
           expect(result).to eql(fact_filter_input)
         end
       end

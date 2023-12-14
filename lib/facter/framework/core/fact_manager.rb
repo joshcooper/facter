@@ -23,7 +23,7 @@ module Facter
       @options[:user_query] = user_query
 
       query_parser = QueryParser.new(user_query)
-      searched_facts = query_parser.parse(@fact_loader.load(user_query, @options))
+      searched_facts = query_parser.parse(@fact_loader.load(user_query.empty?, @options))
 
       searched_facts, cached_facts = @cache_manager.resolve_facts(searched_facts)
       internal_facts = @internal_fact_mgr.resolve_facts(searched_facts)
@@ -34,7 +34,7 @@ module Facter
       resolved_facts.concat(cached_facts)
       @cache_manager.cache_facts(resolved_facts)
 
-      @fact_filter.filter_facts!(resolved_facts, user_query)
+      @fact_filter.filter_facts!(resolved_facts, user_query.empty?)
 
       log_resolved_facts(resolved_facts)
       resolved_facts
@@ -81,7 +81,7 @@ module Facter
     end
 
     def core_fact(user_query, options)
-      loaded_facts_hash = @fact_loader.load_internal_facts(user_query, options)
+      loaded_facts_hash = @fact_loader.load_internal_facts(user_query.empty?, options)
 
       query_parser = QueryParser.new(user_query)
       searched_facts = query_parser.parse(loaded_facts_hash)
@@ -90,7 +90,7 @@ module Facter
       resolved_facts = @internal_fact_mgr.resolve_facts(searched_facts)
       resolved_facts.concat(cached_facts)
 
-      @fact_filter.filter_facts!(resolved_facts, user_query)
+      @fact_filter.filter_facts!(resolved_facts, user_query.empty?)
 
       resolved_facts
     end

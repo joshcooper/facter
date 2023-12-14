@@ -6,8 +6,8 @@ module Facter
       @options = options
     end
 
-    def filter_facts!(resolved_facts, user_query)
-      filter_legacy_facts!(resolved_facts) if user_query.empty?
+    def filter_facts!(resolved_facts, empty_query_list)
+      filter_legacy_facts!(resolved_facts) if empty_query_list
       filter_blocked_legacy_facts!(resolved_facts)
       resolved_facts
     end
