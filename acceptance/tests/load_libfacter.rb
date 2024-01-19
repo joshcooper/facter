@@ -2,6 +2,8 @@
 test_name 'C100161: Ruby can load libfacter without raising an error' do
   tag 'risk:high'
 
+  raise "Whoops"
+
   require 'puppet/acceptance/common_utils'
   extend Puppet::Acceptance::CommandUtils
 
