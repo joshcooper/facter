@@ -23,6 +23,7 @@ describe Facter::Resolvers::Uname do
   end
 
   after do
+    uname_resolver.instance_variable_set(:@log, nil)
     Facter::Resolvers::Uname.invalidate_cache
   end
 
