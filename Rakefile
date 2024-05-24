@@ -16,13 +16,31 @@ end
 
 namespace :pl_ci do
   desc 'build the gem and place it at the directory root'
-  task :gem_build do
-    stdout, stderr, status = Open3.capture3('gem build facter.gemspec')
+  task :gem_build, [:gemspec] do |t, args|
+    args.with_defaults(gemspec: 'facter.gemspec')
+    stdout, stderr, status = Open3.capture3("gem build #{args.gemspec}")
     if !status.exitstatus.zero?
       puts "Error building facter.gemspec \n#{stdout} \n#{stderr}"
       exit(1)
     else
       puts stdout
+    end
+  end
+
+  desc 'build the nightly gem and place it at the directory root'
+  task :nightly_gem_build do
+    # this is taken from `rake package:nightly_gem`
+    extended_dot_version = %x{git describe --tags --dirty --abbrev=7}.chomp.tr('-', '.')
+
+    require 'tempfile'
+    Tempfile.create("gemspec") do |dst|
+      File.open("facter.gemspec", "r") do |src|
+        src.readlines.each do |line|
+          dst << line.gsub(/spec\.version\s*=\s*'[0-9.]+'/, "spec.version = '#{extended_dot_version}'")
+        end
+      end
+      dst.flush
+      Rake::Task['pl_ci:gem_build'].invoke(dst)
     end
   end
 end
