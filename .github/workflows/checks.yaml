@@ -13,6 +13,8 @@ jobs:
   rubocop_checks:
     runs-on: ubuntu-20.04
     name: RuboCop
+    env:
+      NO_ARTIFACTORY: true
     steps:
       - name: Checkout current PR
         uses: actions/checkout@v4

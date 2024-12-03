@@ -8,7 +8,11 @@ group(:release, optional: true) do
   gem 'octokit', '~> 4.18.0'
 end
 
-gem 'packaging', require: false
+unless ENV['NO_ARTIFACTORY']
+  source 'https://artifactory.delivery.puppetlabs.net/artifactory/api/gems/rubygems/' do
+    gem 'packaging', '~> 2.0', require: false
+  end
+end
 
 local_gemfile = File.expand_path('Gemfile.local', __dir__)
 eval_gemfile(local_gemfile) if File.exist?(local_gemfile)

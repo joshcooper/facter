@@ -27,6 +27,7 @@ jobs:
     runs-on: ${{ matrix.cfg.os }}
     env:
       BUNDLE_SET: 'with integration'
+      NO_ARTIFACTORY: true
     steps:
       - name: Checkout current PR
         uses: actions/checkout@v4
