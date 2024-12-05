@@ -32,7 +32,7 @@ end
 def beaker_platform
   {
     'ubuntu-20.04' => 'ubuntu2004-64a',
-    'macos-12' => 'osx12-64a',
+    'macos-latest' => 'osx14-ARM64a',
     'windows-2016' => 'windows2016-64a',
     'windows-2019' => 'windows2019-64a'
   }[HOST_PLATFORM]
@@ -134,7 +134,7 @@ end
 
 def verify_facter_standalone_exits_0
   Dir.chdir(ENV['FACTER_ROOT']) do
-    run('bundle install --without development')
+    run('bundle install --without documentation')
     run('bundle exec facter')
   end
 end
