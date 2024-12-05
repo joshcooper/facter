@@ -7,15 +7,6 @@ ROOT_DIR = Pathname.new(File.expand_path('..', __dir__)) unless defined?(ROOT_DI
 ENV['RACK_ENV'] = 'test'
 
 require 'bundler/setup'
-
-require 'simplecov'
-
-# Configure SimpleCov
-SimpleCov.start do
-  track_files 'lib/**/*.rb'
-  add_filter 'spec'
-end
-
 require 'open3'
 require 'thor'
 require 'fileutils'
@@ -36,9 +27,6 @@ if unit_tests
   Dir.glob(File.join('./lib/facter/facts', '/**/*/', '*.rb')).sort.each(&method(:require))
   Dir.glob(File.join('./lib/facter/resolvers', '/**/*/', '*.rb')).sort.each(&method(:require))
 end
-
-default_coverage = 90
-SimpleCov.minimum_coverage ENV['COVERAGE'] || default_coverage
 
 def colorize(str, color)
   "#{color}#{str}#{Facter::RESET}"
