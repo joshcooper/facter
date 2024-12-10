@@ -50,7 +50,7 @@ namespace :pl_ci do
   end
 end
 
-if Rake.application.top_level_tasks.grep(/^(pl:|package:)/).any?
+if !ENV['NO_ARTIFACTORY'] && Rake.application.top_level_tasks.grep(/^(pl:|package:)/).any?
   begin
     require 'packaging'
     Pkg::Util::RakeUtils.load_packaging_tasks

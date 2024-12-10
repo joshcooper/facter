@@ -11,6 +11,7 @@ on:
 
 env:
   CI: true
+  NO_ARTIFACTORY: true
 
 jobs:
   linux_unit_tests:

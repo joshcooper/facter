@@ -21,6 +21,7 @@ jobs:
       FACTER_ROOT: facter
       SHA: latest
       RELEASE_STREAM: puppet7
+      NO_ARTIFACTORY: true
 
     steps:
       - name: Checkout current PR
