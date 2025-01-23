@@ -33,6 +33,8 @@ module Facter
           output_cgroup = Facter::Util::FileHelper.safe_read('/proc/1/cgroup', nil)
           return unless output_cgroup
 
+          log.warn("cgroup '#{output_cgroup}'")
+
           output_docker = %r{docker/(.+)}.match(output_cgroup)
           output_lxc    = %r{^/lxc/([^/]+)}.match(output_cgroup)
           return if output_docker.nil? && output_lxc.nil?
@@ -50,7 +52,11 @@ module Facter
             log.warn("Unable to getenv for pid 1, '#{e}'")
             return nil
           end
-          return if container.nil? || container.empty?
+
+          if container.nil? || container.empty?
+            log.warn("container '#{container}', continuing")
+            return nil
+          end
 
           info = {}
           case container
@@ -68,6 +74,7 @@ module Facter
             vm = 'systemd_nspawn'
             info = { 'id' => Facter::Util::FileHelper.safe_read('/etc/machine-id', nil).strip }
           else
+            log.warn("container '#{container}' is not recognized, continuing")
             return nil
           end
           @fact_list[:vm] = vm
