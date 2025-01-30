@@ -34,7 +34,10 @@ module Facter
           output_docker = %r{docker/(?<id>.+)}.match(output_cgroup)
           output_lxc = %r{^/lxc/(?<name>[^/]+)}.match(output_cgroup)
 
-          if output_docker
+          if File.exist?('/.dockerenv')
+            vm = 'docker'
+            info = output_docker && output_docker[:id] ? { 'id' => output_docker[:id] } : {}
+          elsif output_docker
             vm = 'docker'
             info = { 'id' => output_docker[:id] }
           elsif output_lxc
