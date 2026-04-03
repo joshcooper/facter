@@ -163,8 +163,19 @@ fn main() {
         for (k, v) in external::load(&ext_dirs) {
             collection.add(k, v);
         }
-        // Re-sort after adding external facts
-        // (collection doesn't expose sort directly; add a helper or accept unsorted externals)
+    }
+
+    // ── Custom facts ──────────────────────────────────────────────────────────
+    if !cli.no_custom_facts && !cfg.no_custom_facts {
+        let custom_dirs: Vec<PathBuf> = cli
+            .custom_dir
+            .iter()
+            .chain(cfg.custom_dirs.iter())
+            .map(PathBuf::from)
+            .collect();
+        for (k, v) in external::load_custom(&custom_dirs) {
+            collection.add(k, v);
+        }
     }
 
     // ── Strict mode ───────────────────────────────────────────────────────────

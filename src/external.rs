@@ -66,6 +66,7 @@ fn load_file(path: &Path) -> Vec<(String, FactValue)> {
         "json" => load_json(path),
         "yaml" | "yml" => load_yaml(path),
         "txt" => load_text(path),
+        "rb" => load_ruby(path),
         _ => {
             if is_executable(path) {
                 load_executable(path)
@@ -74,6 +75,15 @@ fn load_file(path: &Path) -> Vec<(String, FactValue)> {
             }
         }
     }
+}
+
+// ── Custom (Ruby) dirs ────────────────────────────────────────────────────────
+
+/// Load custom facts from explicitly-specified directories.
+/// Unlike `load()`, these dirs are scanned directly (not a `facts.d` subdir)
+/// and `.rb` files are executed via a Ruby shim.
+pub fn load_custom(dirs: &[PathBuf]) -> Vec<(String, FactValue)> {
+    load(dirs)
 }
 
 // ── JSON ──────────────────────────────────────────────────────────────────────
@@ -263,6 +273,82 @@ fn load_yaml_from_str(text: &str) -> Vec<(String, FactValue)> {
             };
             Some((key, yaml_to_fact(&v)))
         })
+        .collect()
+}
+
+// ── Ruby (.rb) custom facts ───────────────────────────────────────────────────
+
+/// Minimal Facter DSL shim written to a temp file and executed via `ruby`.
+const RUBY_SHIM: &str = r#"
+require 'json'
+module Facter
+  @@facts = {}
+  class Fact
+    def setcode(cmd = nil, &block)
+      @val = block ? block.call : `#{cmd}`.chomp
+    end
+    def confine(*); end
+    def weight(*); end
+    def has_weight(*); end
+    def on_flush(*); end
+    def val; @val; end
+  end
+  def self.add(name, opts = {}, &block)
+    f = Fact.new
+    f.instance_eval(&block) if block
+    @@facts[name.to_s] = f.val
+  end
+  def self.value(n); @@facts[n.to_s]; end
+  def self.[]=(n, v); @@facts[n.to_s] = v; end
+  def self.facts; @@facts; end
+end
+ARGV.each { |f| begin; load f; rescue => e; $stderr.puts "facter: #{f}: #{e}"; end }
+puts JSON.generate(Facter.facts)
+"#;
+
+fn load_ruby(path: &Path) -> Vec<(String, FactValue)> {
+    // Write shim to a per-process temp file (avoid repeated writes if called multiple times)
+    let shim_path = std::env::temp_dir().join(format!(".facter_rb_shim_{}.rb", std::process::id()));
+    if let Err(e) = fs::write(&shim_path, RUBY_SHIM) {
+        log::warn!("custom facts: cannot write Ruby shim: {}", e);
+        return vec![];
+    }
+
+    let out = Command::new("ruby")
+        .arg(&shim_path)
+        .arg(path)
+        .env("INSIDE_FACTER", "true")
+        .output();
+
+    let _ = fs::remove_file(&shim_path);
+
+    let out = match out {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("custom facts: failed to run ruby for {:?}: {}", path, e);
+            return vec![];
+        }
+    };
+
+    if !out.stderr.is_empty() {
+        log::warn!(
+            "custom facts: {:?} stderr: {}",
+            path,
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let map: serde_json::Map<String, serde_json::Value> =
+        match serde_json::from_str(stdout.trim()) {
+            Ok(serde_json::Value::Object(m)) => m,
+            _ => {
+                log::warn!("custom facts: {:?} did not produce a JSON object", path);
+                return vec![];
+            }
+        };
+    map.into_iter()
+        .map(|(k, v)| (k.to_lowercase(), json_to_fact(&v)))
         .collect()
 }
 
