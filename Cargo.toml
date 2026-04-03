@@ -1,0 +1,24 @@
+[package]
+name = "facter"
+version = "3.14.25"
+edition = "2021"
+description = "Collect and display facts about the system"
+
+[[bin]]
+name = "facter"
+path = "src/main.rs"
+
+[lib]
+name = "facter"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+libc = "0.2"
+indexmap = { version = "2", features = ["serde"] }
+log = "0.4"
+env_logger = "0.11"
+anyhow = "1"
