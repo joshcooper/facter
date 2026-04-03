@@ -17,12 +17,14 @@ impl Collection {
     }
 
     /// Run every resolver, honouring blocklist and TTL cache settings.
+    /// When `timing` is true, each resolver's wall time is printed to stderr.
     pub fn resolve_all(
         &mut self,
         resolvers: &[Box<dyn Resolver>],
         blocklist: &HashSet<String>,
         ttls: &HashMap<String, u64>,
         ignore_cache: bool,
+        timing: bool,
     ) {
         for resolver in resolvers {
             let name = resolver.name();
@@ -39,6 +41,7 @@ impl Collection {
                 None
             };
 
+            let t0 = std::time::Instant::now();
             let result = if let Some(cached_facts) = cached {
                 log::debug!("resolver cache hit: {}", name);
                 cached_facts
@@ -51,12 +54,70 @@ impl Collection {
                 }
                 facts
             };
+            if timing {
+                eprintln!("{}: {:.6} seconds", name, t0.elapsed().as_secs_f64());
+            }
 
             for (k, v) in result {
                 self.facts.insert(k, v);
             }
         }
         self.facts.sort_keys();
+    }
+
+    /// Re-sort facts alphabetically (call after adding external/custom facts).
+    pub fn sort_keys(&mut self) {
+        self.facts.sort_keys();
+    }
+
+    /// Remove pre-facter-3 legacy flat facts. Call unless `--show-legacy` is set.
+    pub fn remove_legacy(&mut self) {
+        const STATIC_LEGACY: &[&str] = &[
+            // OS
+            "architecture", "hardwaremodel", "operatingsystem",
+            "operatingsystemrelease", "osfamily",
+            "lsbdistcodename", "lsbdistdescription", "lsbdistid",
+            "lsbdistrelease", "lsbmajdistrelease", "lsbminordistrelease",
+            // SELinux flat
+            "selinux", "selinux_enforced", "selinux_policyversion",
+            "selinux_current_mode", "selinux_config_mode", "selinux_config_policy",
+            // Identity
+            "id", "gid",
+            // Networking flat
+            "domain", "fqdn", "hostname",
+            "interfaces", "ipaddress", "ipaddress6",
+            "macaddress", "netmask", "netmask6", "network", "network6",
+            // Memory flat
+            "memoryfree", "memoryfree_mb", "memorysize", "memorysize_mb",
+            "swapencrypted", "swapfree", "swapfree_mb", "swapsize", "swapsize_mb",
+            // Processors flat
+            "hardwareisa", "physicalprocessorcount", "processorcount",
+            // DMI flat
+            "bios_release_date", "bios_vendor", "bios_version",
+            "boardassettag", "boardmanufacturer", "boardproductname", "boardserialnumber",
+            "chassisassettag", "chassistype",
+            "manufacturer", "productname", "serialnumber", "uuid",
+            // Disk flat
+            "blockdevices",
+            // Xen flat
+            "xendomains",
+            // SSH flat
+            "sshdsakey", "sshecdsakey", "sshed25519key", "sshrsakey",
+            "sshfp_dsa", "sshfp_ecdsa", "sshfp_ed25519", "sshfp_rsa",
+        ];
+        for name in STATIC_LEGACY {
+            self.facts.shift_remove(*name);
+        }
+        // Pattern-based: processor0..N, blockdevice_*_*, ipaddress_*, mtu_*, etc.
+        let legacy_keys: Vec<String> = self
+            .facts
+            .keys()
+            .filter(|k| is_legacy_pattern(k))
+            .cloned()
+            .collect();
+        for key in legacy_keys {
+            self.facts.shift_remove(&key);
+        }
     }
 
     /// Look up a fact by exact key.
@@ -155,4 +216,22 @@ impl Collection {
         }
         Ok(serde_yaml::to_string(&map)?)
     }
+}
+
+fn is_legacy_pattern(k: &str) -> bool {
+    // processorN (e.g. processor0, processor1) but not "processors"
+    if let Some(suffix) = k.strip_prefix("processor") {
+        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+            return true;
+        }
+    }
+    k.starts_with("blockdevice_")
+        || k.starts_with("ipaddress_")
+        || k.starts_with("ipaddress6_")
+        || k.starts_with("macaddress_")
+        || k.starts_with("netmask_")
+        || k.starts_with("netmask6_")
+        || k.starts_with("network_")
+        || k.starts_with("network6_")
+        || k.starts_with("mtu_")
 }

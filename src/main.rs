@@ -90,6 +90,14 @@ struct Cli {
     #[arg(long = "list-cache-groups", action = ArgAction::SetTrue)]
     list_cache_groups: bool,
 
+    /// Show resolver timing information on stderr
+    #[arg(long, action = ArgAction::SetTrue)]
+    timing: bool,
+
+    /// Show full backtraces for errors in custom facts
+    #[arg(long, action = ArgAction::SetTrue)]
+    trace: bool,
+
     /// Fact names or dotted-path queries (e.g. `os.family`)
     queries: Vec<String>,
 }
@@ -146,7 +154,7 @@ fn main() {
 
     // ── Resolve facts ─────────────────────────────────────────────────────────
     let mut collection = Collection::new();
-    collection.resolve_all(&resolvers, &blocklist, &ttls, cli.no_cache);
+    collection.resolve_all(&resolvers, &blocklist, &ttls, cli.no_cache, cli.timing);
 
     // ── External facts ────────────────────────────────────────────────────────
     if !cli.no_external_facts && !cfg.no_external_facts {
@@ -165,17 +173,37 @@ fn main() {
         }
     }
 
-    // ── Custom facts ──────────────────────────────────────────────────────────
+    // ── Custom facts (--custom-dir + FACTERLIB) ───────────────────────────────
     if !cli.no_custom_facts && !cfg.no_custom_facts {
-        let custom_dirs: Vec<PathBuf> = cli
+        let mut custom_dirs: Vec<PathBuf> = cli
             .custom_dir
             .iter()
             .chain(cfg.custom_dirs.iter())
             .map(PathBuf::from)
             .collect();
-        for (k, v) in external::load_custom(&custom_dirs) {
+        // FACTERLIB is a colon-separated list of additional custom fact dirs
+        if let Ok(facterlib) = std::env::var("FACTERLIB") {
+            custom_dirs.extend(facterlib.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
+        }
+        for (k, v) in external::load_custom(&custom_dirs, cli.trace) {
             collection.add(k, v);
         }
+    }
+
+    // ── Re-sort after external/custom facts ───────────────────────────────────
+    collection.sort_keys();
+
+    // ── FACTER_* environment variable overrides ───────────────────────────────
+    for (key, val) in std::env::vars() {
+        if let Some(fact_name) = key.strip_prefix("FACTER_") {
+            let fact_name = fact_name.to_lowercase();
+            collection.add(fact_name, facter::facts::value::FactValue::String(val));
+        }
+    }
+
+    // ── Hide legacy facts unless --show-legacy ────────────────────────────────
+    if !cli.show_legacy {
+        collection.remove_legacy();
     }
 
     // ── Strict mode ───────────────────────────────────────────────────────────

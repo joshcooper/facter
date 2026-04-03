@@ -66,7 +66,6 @@ fn load_file(path: &Path) -> Vec<(String, FactValue)> {
         "json" => load_json(path),
         "yaml" | "yml" => load_yaml(path),
         "txt" => load_text(path),
-        "rb" => load_ruby(path),
         _ => {
             if is_executable(path) {
                 load_executable(path)
@@ -82,8 +81,40 @@ fn load_file(path: &Path) -> Vec<(String, FactValue)> {
 /// Load custom facts from explicitly-specified directories.
 /// Unlike `load()`, these dirs are scanned directly (not a `facts.d` subdir)
 /// and `.rb` files are executed via a Ruby shim.
-pub fn load_custom(dirs: &[PathBuf]) -> Vec<(String, FactValue)> {
-    load(dirs)
+/// `trace` enables full Ruby backtraces on errors.
+pub fn load_custom(dirs: &[PathBuf], trace: bool) -> Vec<(String, FactValue)> {
+    let mut facts = Vec::new();
+    for dir in dirs {
+        if !dir.is_dir() {
+            continue;
+        }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let mut paths: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_file())
+            .collect();
+        paths.sort();
+        for path in paths {
+            facts.extend(load_file_custom(&path, trace));
+        }
+    }
+    facts
+}
+
+fn load_file_custom(path: &Path, trace: bool) -> Vec<(String, FactValue)> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    match ext.as_str() {
+        "rb" => load_ruby(path, trace),
+        _ => load_file(path),
+    }
 }
 
 // ── JSON ──────────────────────────────────────────────────────────────────────
@@ -302,11 +333,18 @@ module Facter
   def self.[]=(n, v); @@facts[n.to_s] = v; end
   def self.facts; @@facts; end
 end
-ARGV.each { |f| begin; load f; rescue => e; $stderr.puts "facter: #{f}: #{e}"; end }
+trace = ENV['FACTER_TRACE'] == '1'
+ARGV.each do |f|
+  if trace
+    load f
+  else
+    begin; load f; rescue => e; $stderr.puts "facter: #{f}: #{e}"; end
+  end
+end
 puts JSON.generate(Facter.facts)
 "#;
 
-fn load_ruby(path: &Path) -> Vec<(String, FactValue)> {
+fn load_ruby(path: &Path, trace: bool) -> Vec<(String, FactValue)> {
     // Write shim to a per-process temp file (avoid repeated writes if called multiple times)
     let shim_path = std::env::temp_dir().join(format!(".facter_rb_shim_{}.rb", std::process::id()));
     if let Err(e) = fs::write(&shim_path, RUBY_SHIM) {
@@ -314,11 +352,12 @@ fn load_ruby(path: &Path) -> Vec<(String, FactValue)> {
         return vec![];
     }
 
-    let out = Command::new("ruby")
-        .arg(&shim_path)
-        .arg(path)
-        .env("INSIDE_FACTER", "true")
-        .output();
+    let mut cmd = Command::new("ruby");
+    cmd.arg(&shim_path).arg(path).env("INSIDE_FACTER", "true");
+    if trace {
+        cmd.env("FACTER_TRACE", "1");
+    }
+    let out = cmd.output();
 
     let _ = fs::remove_file(&shim_path);
 
