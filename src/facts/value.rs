@@ -71,3 +71,98 @@ impl<'a> fmt::Display for HashDisplay<'a> {
         self.value.write_hash(f, self.indent)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn h(v: &FactValue, indent: usize) -> String {
+        format!("{}", HashDisplay { value: v, indent })
+    }
+
+    #[test]
+    fn string_unquoted_at_top_level() {
+        assert_eq!(h(&FactValue::String("hello".into()), 0), "hello");
+    }
+
+    #[test]
+    fn string_quoted_inside_container() {
+        assert_eq!(h(&FactValue::String("hello".into()), 1), "\"hello\"");
+    }
+
+    #[test]
+    fn integer_never_quoted() {
+        assert_eq!(h(&FactValue::Integer(42), 0), "42");
+        assert_eq!(h(&FactValue::Integer(42), 2), "42");
+    }
+
+    #[test]
+    fn float_display() {
+        assert_eq!(h(&FactValue::Float(3.14), 0), "3.14");
+    }
+
+    #[test]
+    fn boolean_values() {
+        assert_eq!(h(&FactValue::Boolean(true), 0), "true");
+        assert_eq!(h(&FactValue::Boolean(false), 1), "false");
+    }
+
+    #[test]
+    fn array_inline_format() {
+        let v = FactValue::Array(vec![
+            FactValue::String("a".into()),
+            FactValue::String("b".into()),
+        ]);
+        assert_eq!(h(&v, 0), "[\"a\", \"b\"]");
+    }
+
+    #[test]
+    fn empty_array() {
+        assert_eq!(h(&FactValue::Array(vec![]), 0), "[]");
+    }
+
+    #[test]
+    fn map_braces_and_indentation() {
+        let mut m = IndexMap::new();
+        m.insert("key".to_string(), FactValue::String("val".into()));
+        let out = h(&FactValue::Map(m), 0);
+        assert!(out.starts_with('{'));
+        assert!(out.trim_end().ends_with('}'));
+        assert!(out.contains("  key => \"val\""));
+    }
+
+    #[test]
+    fn nested_map_extra_indentation() {
+        let mut inner = IndexMap::new();
+        inner.insert("deep".to_string(), FactValue::Integer(1));
+        let mut outer = IndexMap::new();
+        outer.insert("inner".to_string(), FactValue::Map(inner));
+        let out = h(&FactValue::Map(outer), 0);
+        // inner map key should be indented 4 spaces (2 levels)
+        assert!(out.contains("    deep => 1"));
+    }
+
+    #[test]
+    fn json_roundtrip() {
+        let mut m = IndexMap::new();
+        m.insert("x".to_string(), FactValue::Integer(1));
+        m.insert("y".to_string(), FactValue::Boolean(true));
+        let v = FactValue::Map(m);
+        let json = serde_json::to_string(&v).unwrap();
+        let back: FactValue = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, FactValue::Map(_)));
+    }
+
+    #[test]
+    fn serde_untagged_integer_not_string() {
+        // serde(untagged) must pick Integer for a bare number, not String
+        let v: FactValue = serde_json::from_str("42").unwrap();
+        assert!(matches!(v, FactValue::Integer(42)));
+    }
+
+    #[test]
+    fn serde_untagged_boolean() {
+        let v: FactValue = serde_json::from_str("true").unwrap();
+        assert!(matches!(v, FactValue::Boolean(true)));
+    }
+}

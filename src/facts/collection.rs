@@ -269,3 +269,351 @@ fn is_legacy_pattern(k: &str) -> bool {
         || k.starts_with("network6_")
         || k.starts_with("mtu_")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make() -> Collection {
+        let mut c = Collection::new();
+        // structured os map
+        let mut release = IndexMap::new();
+        release.insert("full".to_string(), FactValue::String("22.04".into()));
+        release.insert("major".to_string(), FactValue::String("22".into()));
+        let mut distro = IndexMap::new();
+        distro.insert("id".to_string(), FactValue::String("Ubuntu".into()));
+        distro.insert("release".to_string(), FactValue::Map(release.clone()));
+        let mut os = IndexMap::new();
+        os.insert("name".to_string(), FactValue::String("Ubuntu".into()));
+        os.insert("release".to_string(), FactValue::Map(release));
+        os.insert("distro".to_string(), FactValue::Map(distro));
+        c.add("os", FactValue::Map(os));
+        c.add("kernel", FactValue::String("Linux".into()));
+        // processors with models array
+        let mut proc_map = IndexMap::new();
+        proc_map.insert("count".to_string(), FactValue::Integer(4));
+        proc_map.insert("models".to_string(), FactValue::Array(vec![
+            FactValue::String("Intel Core i7".into()),
+            FactValue::String("Intel Core i7".into()),
+        ]));
+        c.add("processors", FactValue::Map(proc_map));
+        // legacy facts
+        c.add("operatingsystem", FactValue::String("Ubuntu".into()));
+        c.add("processor0", FactValue::String("Intel Core i7".into()));
+        c.add("blockdevice_sda_model", FactValue::String("Samsung SSD".into()));
+        c.add("ipaddress_eth0", FactValue::String("10.0.0.1".into()));
+        c.add("mtu_eth0", FactValue::Integer(1500));
+        c
+    }
+
+    // ── query ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn query_top_level_string() {
+        let c = make();
+        assert!(matches!(c.query("kernel"), Some(FactValue::String(s)) if s == "Linux"));
+    }
+
+    #[test]
+    fn query_dotted_one_level() {
+        let c = make();
+        assert!(matches!(c.query("os.name"), Some(FactValue::String(s)) if s == "Ubuntu"));
+    }
+
+    #[test]
+    fn query_dotted_two_levels() {
+        let c = make();
+        assert!(matches!(c.query("os.release.full"), Some(FactValue::String(s)) if s == "22.04"));
+    }
+
+    #[test]
+    fn query_array_index() {
+        let c = make();
+        assert!(matches!(
+            c.query("processors.models.0"),
+            Some(FactValue::String(s)) if s == "Intel Core i7"
+        ));
+    }
+
+    #[test]
+    fn query_missing_top_level_returns_none() {
+        assert!(make().query("nonexistent").is_none());
+    }
+
+    #[test]
+    fn query_missing_nested_returns_none() {
+        assert!(make().query("os.nonexistent").is_none());
+    }
+
+    #[test]
+    fn query_out_of_bounds_index_returns_none() {
+        assert!(make().query("processors.models.99").is_none());
+    }
+
+    #[test]
+    fn query_index_on_non_array_returns_none() {
+        assert!(make().query("os.name.0").is_none());
+    }
+
+    // ── exclude ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn exclude_top_level_key() {
+        let mut c = make();
+        c.exclude("kernel");
+        assert!(c.query("kernel").is_none());
+        assert!(c.query("os.name").is_some()); // others unaffected
+    }
+
+    #[test]
+    fn exclude_nested_key_leaves_siblings() {
+        let mut c = make();
+        c.exclude("os.release");
+        assert!(c.query("os.release").is_none());
+        assert!(c.query("os.name").is_some());
+        assert!(c.query("os.distro").is_some());
+    }
+
+    #[test]
+    fn exclude_deep_nested_leaves_siblings() {
+        let mut c = make();
+        c.exclude("os.release.major");
+        assert!(c.query("os.release.major").is_none());
+        assert!(c.query("os.release.full").is_some());
+    }
+
+    #[test]
+    fn exclude_nonexistent_path_is_noop() {
+        let mut c = make();
+        c.exclude("does.not.exist"); // must not panic
+        assert!(c.query("kernel").is_some());
+    }
+
+    // ── remove_legacy ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn remove_legacy_removes_static_names() {
+        let mut c = make();
+        c.remove_legacy();
+        assert!(c.query("operatingsystem").is_none());
+    }
+
+    #[test]
+    fn remove_legacy_removes_processor_n_pattern() {
+        let mut c = make();
+        c.remove_legacy();
+        assert!(c.query("processor0").is_none());
+    }
+
+    #[test]
+    fn remove_legacy_removes_blockdevice_pattern() {
+        let mut c = make();
+        c.remove_legacy();
+        assert!(c.query("blockdevice_sda_model").is_none());
+    }
+
+    #[test]
+    fn remove_legacy_removes_ipaddress_pattern() {
+        let mut c = make();
+        c.remove_legacy();
+        assert!(c.query("ipaddress_eth0").is_none());
+    }
+
+    #[test]
+    fn remove_legacy_removes_mtu_pattern() {
+        let mut c = make();
+        c.remove_legacy();
+        assert!(c.query("mtu_eth0").is_none());
+    }
+
+    #[test]
+    fn remove_legacy_keeps_modern_facts() {
+        let mut c = make();
+        c.remove_legacy();
+        assert!(c.query("kernel").is_some());
+        assert!(c.query("os.name").is_some());
+        assert!(c.query("processors.count").is_some());
+    }
+
+    #[test]
+    fn remove_legacy_keeps_processors_map() {
+        // "processors" must not be removed by the processorN pattern
+        let mut c = make();
+        c.remove_legacy();
+        assert!(c.query("processors").is_some());
+    }
+
+    // ── sort_keys ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn sort_keys_orders_alphabetically() {
+        let mut c = Collection::new();
+        c.add("zebra", FactValue::String("z".into()));
+        c.add("apple", FactValue::String("a".into()));
+        c.add("mango", FactValue::String("m".into()));
+        c.sort_keys();
+        let out = c.write_hash(&[]);
+        let pa = out.find("apple").unwrap();
+        let pm = out.find("mango").unwrap();
+        let pz = out.find("zebra").unwrap();
+        assert!(pa < pm && pm < pz);
+    }
+
+    // ── is_legacy_pattern ─────────────────────────────────────────────────────
+
+    #[test]
+    fn legacy_pattern_processor_digits() {
+        assert!(is_legacy_pattern("processor0"));
+        assert!(is_legacy_pattern("processor12"));
+    }
+
+    #[test]
+    fn legacy_pattern_processor_map_not_matched() {
+        assert!(!is_legacy_pattern("processors"));
+        assert!(!is_legacy_pattern("processorcount"));
+    }
+
+    #[test]
+    fn legacy_pattern_blockdevice() {
+        assert!(is_legacy_pattern("blockdevice_sda_model"));
+    }
+
+    #[test]
+    fn legacy_pattern_interface_variants() {
+        assert!(is_legacy_pattern("ipaddress_eth0"));
+        assert!(is_legacy_pattern("ipaddress6_eth0"));
+        assert!(is_legacy_pattern("macaddress_eth0"));
+        assert!(is_legacy_pattern("netmask_eth0"));
+        assert!(is_legacy_pattern("mtu_eth0"));
+    }
+
+    // ── write_hash ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn write_hash_all_facts_when_no_queries() {
+        let c = make();
+        let out = c.write_hash(&[]);
+        assert!(out.contains("kernel =>"));
+        assert!(out.contains("os =>"));
+    }
+
+    #[test]
+    fn write_hash_single_query_omits_key_prefix() {
+        let c = make();
+        let out = c.write_hash(&["kernel".to_string()]);
+        assert!(!out.contains("=>"));
+        assert!(out.contains("Linux"));
+    }
+
+    #[test]
+    fn write_hash_multiple_queries_include_key_prefix() {
+        let c = make();
+        let out = c.write_hash(&["kernel".to_string(), "os.name".to_string()]);
+        assert!(out.contains("kernel =>"));
+        assert!(out.contains("os.name =>"));
+    }
+
+    #[test]
+    fn write_hash_missing_query_omitted_silently() {
+        let c = make();
+        let out = c.write_hash(&["nonexistent".to_string()]);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn write_hash_map_value_uses_braces() {
+        let c = make();
+        let out = c.write_hash(&["os".to_string()]);
+        assert!(out.starts_with('{'));
+        assert!(out.trim_end().ends_with('}'));
+    }
+
+    // ── write_json ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn write_json_no_queries_returns_all_facts() {
+        let c = make();
+        let json = c.write_json(&[]).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v.get("kernel").is_some());
+        assert!(v.get("os").is_some());
+    }
+
+    #[test]
+    fn write_json_single_query_returns_bare_value() {
+        let c = make();
+        let json = c.write_json(&["kernel".to_string()]).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v.as_str().unwrap(), "Linux");
+    }
+
+    #[test]
+    fn write_json_single_missing_query_returns_null() {
+        let c = make();
+        let json = c.write_json(&["nonexistent".to_string()]).unwrap();
+        assert_eq!(json.trim(), "null");
+    }
+
+    #[test]
+    fn write_json_multiple_queries_returns_object() {
+        let c = make();
+        let json = c.write_json(&["kernel".to_string(), "os.name".to_string()]).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v.is_object());
+        assert_eq!(v.get("kernel").and_then(|v| v.as_str()), Some("Linux"));
+        assert_eq!(v.get("os.name").and_then(|v| v.as_str()), Some("Ubuntu"));
+    }
+
+    #[test]
+    fn write_json_multiple_queries_omits_missing() {
+        let c = make();
+        let json = c.write_json(&["kernel".to_string(), "nonexistent".to_string()]).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v.get("kernel").is_some());
+        assert!(v.get("nonexistent").is_none());
+    }
+
+    // ── write_yaml ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn write_yaml_no_queries_contains_all_facts() {
+        let c = make();
+        let yaml = c.write_yaml(&[]).unwrap();
+        assert!(yaml.contains("kernel:"));
+        assert!(yaml.contains("os:"));
+    }
+
+    #[test]
+    fn write_yaml_single_query_returns_bare_value() {
+        let c = make();
+        let yaml = c.write_yaml(&["kernel".to_string()]).unwrap();
+        assert!(yaml.contains("Linux"));
+        assert!(!yaml.contains("kernel:"));
+    }
+
+    #[test]
+    fn write_yaml_single_missing_query_returns_null() {
+        let c = make();
+        let yaml = c.write_yaml(&["nonexistent".to_string()]).unwrap();
+        assert_eq!(yaml.trim(), "null");
+    }
+
+    #[test]
+    fn write_yaml_multiple_queries_returns_mapping() {
+        let c = make();
+        let yaml = c.write_yaml(&["kernel".to_string(), "os.name".to_string()]).unwrap();
+        assert!(yaml.contains("kernel:"));
+        assert!(yaml.contains("os.name:"));
+    }
+
+    // ── resolver_group_names ──────────────────────────────────────────────────
+
+    #[test]
+    fn resolver_group_names_reflects_resolver_list() {
+        let resolvers = crate::resolvers::default_resolvers();
+        let names = Collection::resolver_group_names(&resolvers);
+        assert!(names.contains(&"kernel"));
+        assert!(names.contains(&"networking"));
+        assert!(!names.is_empty());
+    }
+}

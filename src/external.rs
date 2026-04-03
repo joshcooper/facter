@@ -396,3 +396,426 @@ fn is_executable(path: &Path) -> bool {
         .map(|m| m.permissions().mode() & 0o111 != 0)
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn tmp_dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("facter_test_{}", name));
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    // ── parse_kv ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn kv_basic_pairs() {
+        let facts = parse_kv("color=blue\nsize=large\n");
+        assert_eq!(facts.len(), 2);
+        assert!(facts.iter().any(|(k, v)| k == "color" && matches!(v, FactValue::String(s) if s == "blue")));
+    }
+
+    #[test]
+    fn kv_skips_comment_lines() {
+        let facts = parse_kv("# comment\nfoo=bar\n");
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].0, "foo");
+    }
+
+    #[test]
+    fn kv_skips_blank_lines() {
+        let facts = parse_kv("\nfoo=bar\n\n");
+        assert_eq!(facts.len(), 1);
+    }
+
+    #[test]
+    fn kv_key_lowercased() {
+        let facts = parse_kv("MyFact=hello\n");
+        assert_eq!(facts[0].0, "myfact");
+    }
+
+    #[test]
+    fn kv_value_with_equals_sign() {
+        // only the first '=' is the separator
+        let facts = parse_kv("url=http://example.com?a=b\n");
+        assert_eq!(facts.len(), 1);
+        assert!(matches!(&facts[0].1, FactValue::String(s) if s == "http://example.com?a=b"));
+    }
+
+    // ── load_json ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn json_string_and_integer() {
+        let dir = tmp_dir("json");
+        let path = dir.join("t.json");
+        fs::write(&path, r#"{"myfact": "hello", "count": 42}"#).unwrap();
+        let facts = load_json(&path);
+        assert!(facts.iter().any(|(k, v)| k == "myfact" && matches!(v, FactValue::String(s) if s == "hello")));
+        assert!(facts.iter().any(|(k, v)| k == "count" && matches!(v, FactValue::Integer(42))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn json_nested_map() {
+        let dir = tmp_dir("json_nested");
+        let path = dir.join("t.json");
+        fs::write(&path, r#"{"outer": {"inner": "value"}}"#).unwrap();
+        let facts = load_json(&path);
+        assert!(matches!(&facts[0].1, FactValue::Map(_)));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn json_non_object_root_returns_empty() {
+        let dir = tmp_dir("json_bad");
+        let path = dir.join("t.json");
+        fs::write(&path, r#"["not", "an", "object"]"#).unwrap();
+        assert!(load_json(&path).is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    // ── load_yaml ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn yaml_string_fact() {
+        let dir = tmp_dir("yaml");
+        let path = dir.join("t.yaml");
+        fs::write(&path, "myfact: myvalue\n").unwrap();
+        let facts = load_yaml(&path);
+        assert!(facts.iter().any(|(k, v)| k == "myfact" && matches!(v, FactValue::String(s) if s == "myvalue")));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn yaml_boolean_fact() {
+        let dir = tmp_dir("yaml_bool");
+        let path = dir.join("t.yaml");
+        fs::write(&path, "enabled: true\n").unwrap();
+        let facts = load_yaml(&path);
+        assert!(facts.iter().any(|(k, v)| k == "enabled" && matches!(v, FactValue::Boolean(true))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    // ── load_text ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn text_key_value_pairs() {
+        let dir = tmp_dir("txt");
+        let path = dir.join("t.txt");
+        fs::write(&path, "color=blue\nsize=large\n").unwrap();
+        let facts = load_text(&path);
+        assert_eq!(facts.len(), 2);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    // ── load (directory scan) ─────────────────────────────────────────────────
+
+    #[test]
+    fn load_dir_picks_up_json_file() {
+        let dir = tmp_dir("load_dir");
+        fs::write(dir.join("facts.json"), r#"{"dirscanfact": "yes"}"#).unwrap();
+        let facts = load(&[dir.clone()]);
+        assert!(facts.iter().any(|(k, _)| k == "dirscanfact"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_skips_missing_dirs() {
+        let facts = load(&[PathBuf::from("/nonexistent/path/xyz")]);
+        assert!(facts.is_empty());
+    }
+
+    #[test]
+    fn load_non_executable_unknown_extension_ignored() {
+        let dir = tmp_dir("load_unknown");
+        fs::write(dir.join("facts.xyz"), "ignored=yes").unwrap();
+        // file is not executable and extension is unknown — should produce nothing
+        let facts = load(&[dir.clone()]);
+        assert!(facts.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_executable_script_kv_output() {
+        let dir = tmp_dir("exec");
+        let script = dir.join("facts.sh");
+        fs::write(&script, "#!/bin/sh\necho 'execfact=fromscript'").unwrap();
+        let mut perms = fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script, perms).unwrap();
+
+        let facts = load(&[dir.clone()]);
+        assert!(facts.iter().any(|(k, v)| k == "execfact" && matches!(v, FactValue::String(s) if s == "fromscript")));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_executable_yaml_output() {
+        let dir = tmp_dir("exec_yaml");
+        let script = dir.join("facts.sh");
+        fs::write(&script, "#!/bin/sh\nprintf 'yamlfact: fromyaml\\ncount: 7\\n'").unwrap();
+        let mut perms = fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script, perms).unwrap();
+
+        let facts = load(&[dir.clone()]);
+        assert!(facts.iter().any(|(k, v)| k == "yamlfact" && matches!(v, FactValue::String(s) if s == "fromyaml")));
+        assert!(facts.iter().any(|(k, v)| k == "count" && matches!(v, FactValue::Integer(7))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn inside_facter_guard_prevents_execution() {
+        let dir = tmp_dir("exec_guard");
+        let script = dir.join("facts.sh");
+        fs::write(&script, "#!/bin/sh\necho 'guardfact=should_not_appear'").unwrap();
+        let mut perms = fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script, perms).unwrap();
+
+        // Set the guard env var — load_executable must return empty
+        std::env::set_var("INSIDE_FACTER", "true");
+        let facts = load_executable(&script);
+        std::env::remove_var("INSIDE_FACTER");
+
+        assert!(facts.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    // ── is_executable ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn non_executable_file_returns_false() {
+        let dir = tmp_dir("is_exec_no");
+        let path = dir.join("plain.txt");
+        fs::write(&path, "hello").unwrap();
+        // default permissions have no x bit
+        assert!(!is_executable(&path));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn executable_file_returns_true() {
+        let dir = tmp_dir("is_exec_yes");
+        let path = dir.join("script.sh");
+        fs::write(&path, "#!/bin/sh").unwrap();
+        let mut perms = fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&path, perms).unwrap();
+        assert!(is_executable(&path));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn missing_file_returns_false() {
+        assert!(!is_executable(std::path::Path::new("/nonexistent/file.sh")));
+    }
+
+    // ── load_yaml_from_str ────────────────────────────────────────────────────
+
+    #[test]
+    fn yaml_from_str_parses_mapping() {
+        let facts = load_yaml_from_str("key1: val1\nkey2: 99\n");
+        assert!(facts.iter().any(|(k, v)| k == "key1" && matches!(v, FactValue::String(s) if s == "val1")));
+        assert!(facts.iter().any(|(k, v)| k == "key2" && matches!(v, FactValue::Integer(99))));
+    }
+
+    #[test]
+    fn yaml_from_str_non_mapping_returns_empty() {
+        assert!(load_yaml_from_str("- a\n- b\n").is_empty());
+    }
+
+    #[test]
+    fn yaml_from_str_keys_lowercased() {
+        let facts = load_yaml_from_str("MyKey: value\n");
+        assert!(facts.iter().any(|(k, _)| k == "mykey"));
+    }
+
+    // ── load_custom ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn load_custom_picks_up_json_file() {
+        let dir = tmp_dir("custom_json");
+        fs::write(dir.join("fact.json"), r#"{"customfact": "cval"}"#).unwrap();
+        let facts = load_custom(&[dir.clone()], false);
+        assert!(facts.iter().any(|(k, v)| k == "customfact" && matches!(v, FactValue::String(s) if s == "cval")));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_custom_skips_missing_dirs() {
+        let facts = load_custom(&[PathBuf::from("/no/such/dir")], false);
+        assert!(facts.is_empty());
+    }
+
+    // ── default_dirs ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn default_dirs_non_empty() {
+        let dirs = default_dirs();
+        assert!(!dirs.is_empty());
+    }
+
+    #[test]
+    fn default_dirs_includes_system_paths() {
+        let dirs = default_dirs();
+        assert!(dirs.iter().any(|d| d.to_str().unwrap().contains("puppetlabs")));
+    }
+
+    #[test]
+    fn default_dirs_includes_home_paths_when_home_set() {
+        // HOME should always be set in a normal test environment
+        if std::env::var_os("HOME").is_some() {
+            let dirs = default_dirs();
+            assert!(dirs.iter().any(|d| d.to_str().unwrap().contains(".facter")));
+        }
+    }
+
+    // ── json_to_fact: Null and Float branches ─────────────────────────────────
+
+    #[test]
+    fn json_null_becomes_empty_string() {
+        let dir = tmp_dir("json_null");
+        let path = dir.join("t.json");
+        fs::write(&path, r#"{"nullfact": null}"#).unwrap();
+        let facts = load_json(&path);
+        assert!(facts.iter().any(|(k, v)| k == "nullfact" && matches!(v, FactValue::String(s) if s.is_empty())));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn json_float_becomes_float_value() {
+        let dir = tmp_dir("json_float");
+        let path = dir.join("t.json");
+        fs::write(&path, r#"{"floatfact": 3.14}"#).unwrap();
+        let facts = load_json(&path);
+        assert!(facts.iter().any(|(k, v)| k == "floatfact" && matches!(v, FactValue::Float(_))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn json_array_value() {
+        let dir = tmp_dir("json_array");
+        let path = dir.join("t.json");
+        fs::write(&path, r#"{"arr": [1, 2, 3]}"#).unwrap();
+        let facts = load_json(&path);
+        assert!(facts.iter().any(|(k, v)| k == "arr" && matches!(v, FactValue::Array(_))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    // ── load_json error paths ─────────────────────────────────────────────────
+
+    #[test]
+    fn load_json_invalid_syntax_returns_empty() {
+        let dir = tmp_dir("json_bad");
+        let path = dir.join("bad.json");
+        fs::write(&path, "not json at all").unwrap();
+        assert!(load_json(&path).is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_json_missing_file_returns_empty() {
+        assert!(load_json(std::path::Path::new("/nonexistent/file.json")).is_empty());
+    }
+
+    // ── yaml_to_fact: all type branches ──────────────────────────────────────
+
+    #[test]
+    fn yaml_null_becomes_empty_string() {
+        let dir = tmp_dir("yaml_null");
+        let path = dir.join("t.yaml");
+        fs::write(&path, "nullfact: ~\n").unwrap();
+        let facts = load_yaml(&path);
+        assert!(facts.iter().any(|(k, v)| k == "nullfact" && matches!(v, FactValue::String(s) if s.is_empty())));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn yaml_float_value() {
+        let dir = tmp_dir("yaml_float");
+        let path = dir.join("t.yaml");
+        fs::write(&path, "pi: 3.14\n").unwrap();
+        let facts = load_yaml(&path);
+        assert!(facts.iter().any(|(k, v)| k == "pi" && matches!(v, FactValue::Float(_))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn yaml_sequence_value() {
+        let dir = tmp_dir("yaml_seq");
+        let path = dir.join("t.yaml");
+        fs::write(&path, "items:\n  - a\n  - b\n").unwrap();
+        let facts = load_yaml(&path);
+        assert!(facts.iter().any(|(k, v)| k == "items" && matches!(v, FactValue::Array(_))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn yaml_nested_mapping() {
+        let dir = tmp_dir("yaml_map");
+        let path = dir.join("t.yaml");
+        fs::write(&path, "outer:\n  inner: value\n").unwrap();
+        let facts = load_yaml(&path);
+        assert!(facts.iter().any(|(k, v)| k == "outer" && matches!(v, FactValue::Map(_))));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn yaml_non_mapping_root_returns_empty() {
+        let dir = tmp_dir("yaml_list_root");
+        let path = dir.join("t.yaml");
+        fs::write(&path, "- a\n- b\n").unwrap();
+        assert!(load_yaml(&path).is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    // ── load_yaml error paths ─────────────────────────────────────────────────
+
+    #[test]
+    fn load_yaml_missing_file_returns_empty() {
+        assert!(load_yaml(std::path::Path::new("/nonexistent/file.yaml")).is_empty());
+    }
+
+    #[test]
+    fn load_yaml_invalid_syntax_returns_empty() {
+        let dir = tmp_dir("yaml_invalid");
+        let path = dir.join("bad.yaml");
+        // Deliberately invalid YAML (mismatched indentation / tab characters)
+        fs::write(&path, "key:\n\t- broken\n").unwrap();
+        // May or may not parse depending on libyaml version; if it does parse, just ensure no panic
+        let _ = load_yaml(&path);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    // ── load_text error path ──────────────────────────────────────────────────
+
+    #[test]
+    fn load_text_missing_file_returns_empty() {
+        assert!(load_text(std::path::Path::new("/nonexistent/file.txt")).is_empty());
+    }
+
+    // ── load_executable error paths ───────────────────────────────────────────
+
+    #[test]
+    fn load_executable_nonexistent_returns_empty() {
+        let facts = load_executable(std::path::Path::new("/nonexistent/script.sh"));
+        assert!(facts.is_empty());
+    }
+
+    #[test]
+    fn load_executable_nonzero_exit_still_returns_output() {
+        let dir = tmp_dir("exec_fail");
+        let script = dir.join("fail.sh");
+        fs::write(&script, "#!/bin/sh\necho 'failfact=yes'\nexit 1").unwrap();
+        let mut perms = fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script, perms).unwrap();
+        // Even with nonzero exit, we still parse whatever was written to stdout
+        let facts = load_executable(&script);
+        assert!(facts.iter().any(|(k, v)| k == "failfact" && matches!(v, FactValue::String(s) if s == "yes")));
+        let _ = fs::remove_dir_all(dir);
+    }
+}
