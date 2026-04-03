@@ -65,6 +65,21 @@ impl Collection {
         self.facts.sort_keys();
     }
 
+    /// Remove a value at a dotted path from the collection.
+    /// - A single segment (e.g. `"gce"`) removes the top-level key entirely.
+    /// - A dotted path (e.g. `"os.distro.release"`) removes that key from within
+    ///   the nested map, leaving the rest of `os` intact.
+    pub fn exclude(&mut self, path: &str) {
+        match path.split_once('.') {
+            None => { self.facts.shift_remove(path); }
+            Some((head, tail)) => {
+                if let Some(value) = self.facts.get_mut(head) {
+                    exclude_path(value, tail);
+                }
+            }
+        }
+    }
+
     /// Re-sort facts alphabetically (call after adding external/custom facts).
     pub fn sort_keys(&mut self) {
         self.facts.sort_keys();
@@ -215,6 +230,25 @@ impl Collection {
             }
         }
         Ok(serde_yaml::to_string(&map)?)
+    }
+}
+
+/// Remove the value at a dotted path, e.g. `"os.distro.release"` or `"gce.instance"`.
+/// Silently does nothing if the path doesn't exist.
+pub fn exclude_path(value: &mut FactValue, path: &str) {
+    let (head, tail) = match path.split_once('.') {
+        Some((h, t)) => (h, Some(t)),
+        None => (path, None),
+    };
+    if let FactValue::Map(map) = value {
+        match tail {
+            None => { map.shift_remove(head); }
+            Some(rest) => {
+                if let Some(child) = map.get_mut(head) {
+                    exclude_path(child, rest);
+                }
+            }
+        }
     }
 }
 

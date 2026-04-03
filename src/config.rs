@@ -39,6 +39,8 @@ pub struct Config {
     pub blocklist: Vec<String>,
     /// Resolver-name → TTL in seconds
     pub ttls: HashMap<String, u64>,
+    /// Dotted paths to exclude from fact output (e.g. "os.distro.release", "gce")
+    pub exclude: Vec<String>,
     /// CLI overrides from config file
     pub debug: bool,
     pub verbose: bool,
@@ -94,6 +96,7 @@ fn parse(text: &str) -> Result<Config, String> {
 
     if let Some(facts) = v.get("facts") {
         cfg.blocklist = str_array(facts, "blocklist");
+        cfg.exclude = str_array(facts, "exclude");
 
         if let Some(ttls) = facts.get("ttls").and_then(|v| v.as_array()) {
             for entry in ttls {

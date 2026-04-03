@@ -98,6 +98,10 @@ struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     trace: bool,
 
+    /// Exclude a fact or sub-value by dotted path, e.g. os.distro.release or gce (may be repeated)
+    #[arg(long = "exclude", value_name = "PATH", action = ArgAction::Append)]
+    exclude: Vec<String>,
+
     /// Fact names or dotted-path queries (e.g. `os.family`)
     queries: Vec<String>,
 }
@@ -204,6 +208,11 @@ fn main() {
     // ── Hide legacy facts unless --show-legacy ────────────────────────────────
     if !cli.show_legacy {
         collection.remove_legacy();
+    }
+
+    // ── Exclusions (--exclude + config) ──────────────────────────────────────
+    for path in cli.exclude.iter().chain(cfg.exclude.iter()) {
+        collection.exclude(path);
     }
 
     // ── Strict mode ───────────────────────────────────────────────────────────
