@@ -1,12 +1,21 @@
+pub mod cloud;
+pub mod disk;
+pub mod dmi;
+pub mod filesystem;
+pub mod fips;
 pub mod identity;
 pub mod kernel;
+pub mod load_average;
 pub mod memory;
 pub mod networking;
 pub mod os;
+pub mod path;
 pub mod processors;
+pub mod ssh;
 pub mod timezone;
 pub mod uptime;
 pub mod virtualization;
+pub mod xen;
 
 use crate::facts::value::FactValue;
 
@@ -26,5 +35,14 @@ pub fn default_resolvers() -> Vec<Box<dyn Resolver>> {
         Box::new(memory::MemoryResolver),
         Box::new(processors::ProcessorsResolver),
         Box::new(virtualization::VirtualizationResolver),
+        Box::new(dmi::DmiResolver),
+        Box::new(disk::DiskResolver),
+        Box::new(filesystem::FilesystemResolver),
+        Box::new(load_average::LoadAverageResolver),
+        Box::new(fips::FipsResolver),
+        Box::new(xen::XenResolver),
+        Box::new(path::PathResolver),
+        Box::new(ssh::SshResolver),
+        Box::new(cloud::CloudResolver),
     ]
 }

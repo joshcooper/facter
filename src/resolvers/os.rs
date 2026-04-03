@@ -64,6 +64,35 @@ impl Resolver for OsResolver {
             os.insert("distro".into(), FactValue::Map(distro));
         }
 
+        // SELinux
+        let selinux = collect_selinux();
+        if selinux.supported {
+            facts.push(("selinux".into(), FactValue::Boolean(selinux.enabled)));
+            let mut sel_map: IndexMap<String, FactValue> = IndexMap::new();
+            sel_map.insert("enabled".into(), FactValue::Boolean(selinux.enabled));
+            if selinux.enabled {
+                facts.push(("selinux_enforced".into(), FactValue::Boolean(selinux.enforced)));
+                sel_map.insert("enforced".into(), FactValue::Boolean(selinux.enforced));
+                if !selinux.current_mode.is_empty() {
+                    facts.push(("selinux_current_mode".into(), FactValue::String(selinux.current_mode.clone())));
+                    sel_map.insert("current_mode".into(), FactValue::String(selinux.current_mode));
+                }
+                if !selinux.config_mode.is_empty() {
+                    facts.push(("selinux_config_mode".into(), FactValue::String(selinux.config_mode.clone())));
+                    sel_map.insert("config_mode".into(), FactValue::String(selinux.config_mode));
+                }
+                if !selinux.config_policy.is_empty() {
+                    facts.push(("selinux_config_policy".into(), FactValue::String(selinux.config_policy.clone())));
+                    sel_map.insert("config_policy".into(), FactValue::String(selinux.config_policy));
+                }
+                if !selinux.policy_version.is_empty() {
+                    facts.push(("selinux_policyversion".into(), FactValue::String(selinux.policy_version.clone())));
+                    sel_map.insert("policy_version".into(), FactValue::String(selinux.policy_version));
+                }
+            }
+            os.insert("selinux".into(), FactValue::Map(sel_map));
+        }
+
         // Legacy lsb* flat facts (sourced from os-release when lsb_release is absent)
         if let Some(id) = os_release.get("ID").or_else(|| os_release.get("DISTRIB_ID")) {
             facts.push(("lsbdistid".into(), FactValue::String(capitalize(id))));
@@ -90,6 +119,81 @@ impl Resolver for OsResolver {
 
         facts
     }
+}
+
+// ── SELinux ───────────────────────────────────────────────────────────────────
+
+struct SelinuxData {
+    supported: bool,
+    enabled: bool,
+    enforced: bool,
+    current_mode: String,
+    config_mode: String,
+    config_policy: String,
+    policy_version: String,
+}
+
+fn collect_selinux() -> SelinuxData {
+    let mut d = SelinuxData {
+        supported: true,
+        enabled: false,
+        enforced: false,
+        current_mode: String::new(),
+        config_mode: String::new(),
+        config_policy: String::new(),
+        policy_version: String::new(),
+    };
+
+    // Find selinuxfs mount point from /proc/self/mounts
+    let mountpoint = find_selinux_mountpoint();
+    let config_exists = std::path::Path::new("/etc/selinux/config").exists();
+
+    d.enabled = !mountpoint.is_empty() && config_exists;
+    if !d.enabled {
+        return d;
+    }
+
+    d.policy_version = fs::read_to_string(format!("{}/policyvers", mountpoint))
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    let enforce = fs::read_to_string(format!("{}/enforce", mountpoint))
+        .unwrap_or_default();
+    let enforce = enforce.trim();
+    if enforce == "1" {
+        d.enforced = true;
+        d.current_mode = "enforcing".into();
+    } else if !enforce.is_empty() {
+        d.current_mode = "permissive".into();
+    }
+
+    if let Ok(config) = fs::read_to_string("/etc/selinux/config") {
+        for line in config.lines() {
+            let line = line.trim();
+            if let Some(rest) = line.strip_prefix("SELINUX=") {
+                d.config_mode = rest.to_string();
+            } else if let Some(rest) = line.strip_prefix("SELINUXTYPE=") {
+                d.config_policy = rest.to_string();
+            }
+        }
+    }
+
+    d
+}
+
+fn find_selinux_mountpoint() -> String {
+    let mounts = match fs::read_to_string("/proc/self/mounts") {
+        Ok(m) => m,
+        Err(_) => return String::new(),
+    };
+    for line in mounts.lines() {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() >= 3 && cols[2] == "selinuxfs" {
+            return cols[1].to_string();
+        }
+    }
+    String::new()
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
