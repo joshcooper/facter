@@ -92,8 +92,9 @@ impl Resolver for DmiResolver {
         }
         if !chassis.is_empty() { dmi.insert("chassis".into(), FactValue::Map(chassis)); }
 
+        if let Some(v) = sys_vendor { dmi.insert("manufacturer".into(), FactValue::String(v)); }
+
         let mut product: IndexMap<String, FactValue> = IndexMap::new();
-        if let Some(v) = sys_vendor { product.insert("manufacturer".into(), FactValue::String(v)); }
         if let Some(v) = product_name { product.insert("name".into(), FactValue::String(v)); }
         if let Some(v) = product_serial { product.insert("serial_number".into(), FactValue::String(v)); }
         if let Some(v) = product_uuid { product.insert("uuid".into(), FactValue::String(v)); }
@@ -164,4 +165,56 @@ fn chassis_description(code: &str) -> String {
         _ => "Unknown",
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── sanitize ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn sanitize_normal_string() {
+        assert_eq!(sanitize("Dell Inc."), "Dell Inc.");
+    }
+
+    #[test]
+    fn sanitize_replaces_control_chars() {
+        assert_eq!(sanitize("foo\x01bar"), "foo.bar");
+    }
+
+    #[test]
+    fn sanitize_replaces_del() {
+        assert_eq!(sanitize("foo\x7fbar"), "foo.bar");
+    }
+
+    #[test]
+    fn sanitize_space_preserved() {
+        assert_eq!(sanitize("Dell Inc."), "Dell Inc.");
+    }
+
+    // ── chassis_description ──────────────────────────────────────────────────
+
+    #[test]
+    fn chassis_description_known_codes() {
+        assert_eq!(chassis_description("3"), "Desktop");
+        assert_eq!(chassis_description("9"), "Laptop");
+        assert_eq!(chassis_description("17"), "Main System Chassis");
+        assert_eq!(chassis_description("23"), "Rack Mount Chassis");
+    }
+
+    #[test]
+    fn chassis_description_unknown_code() {
+        assert_eq!(chassis_description("99"), "Unknown");
+    }
+
+    #[test]
+    fn chassis_description_unparseable_defaults_to_unknown() {
+        assert_eq!(chassis_description("not-a-number"), "Unknown");
+    }
+
+    #[test]
+    fn chassis_description_trims_whitespace() {
+        assert_eq!(chassis_description(" 3 "), "Desktop");
+    }
 }

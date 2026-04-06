@@ -363,18 +363,7 @@ fn parse_release(name: &str, or: &HashMap<String, String>) -> (String, String, S
         return (String::new(), String::new(), String::new());
     }
 
-    // Ubuntu uses "22.04" style: major = "22", minor = "04"
-    let (major, minor) = if name == "Ubuntu" || name == "LinuxMint" {
-        let mut parts = full.splitn(3, '.');
-        let maj = parts.next().unwrap_or("").to_string();
-        let min = parts.next().unwrap_or("").to_string();
-        (maj, min)
-    } else {
-        let mut parts = full.splitn(3, '.');
-        let maj = parts.next().unwrap_or("").to_string();
-        let min = parts.next().unwrap_or("").to_string();
-        (maj, min)
-    };
+    let (major, minor) = distro_release_parts(name, &full);
 
     (full, major, minor)
 }
@@ -410,9 +399,7 @@ fn build_distro(name: &str, or: &HashMap<String, String>) -> IndexMap<String, Fa
 
     if !rel_full.is_empty() {
         let mut rel: IndexMap<String, FactValue> = IndexMap::new();
-        let mut parts = rel_full.splitn(3, '.');
-        let major = parts.next().unwrap_or("").to_string();
-        let minor = parts.next().unwrap_or("").to_string();
+        let (major, minor) = distro_release_parts(name, &rel_full);
         rel.insert("full".into(), FactValue::String(rel_full));
         if !major.is_empty() {
             rel.insert("major".into(), FactValue::String(major));
@@ -426,10 +413,169 @@ fn build_distro(name: &str, or: &HashMap<String, String>) -> IndexMap<String, Fa
     distro
 }
 
+/// Split a release string into (major, minor) matching C++ facter's parse_distro logic.
+/// For Ubuntu/LinuxMint: major = "M.mm" (e.g. "20.04"), minor = patch if present (e.g. "1").
+/// For others: major = first component, minor = second component (e.g. "7", "9").
+fn distro_release_parts(name: &str, release: &str) -> (String, String) {
+    let mut it = release.splitn(3, '.');
+    let a = it.next().unwrap_or("").to_string();
+    let b = it.next().unwrap_or("").to_string();
+    let c = it.next().unwrap_or("").to_string();
+
+    if name == "Ubuntu" || name == "LinuxMint" {
+        // major = "M.mm", minor = patch (usually empty)
+        let major = if b.is_empty() { a } else { format!("{}.{}", a, b) };
+        (major, c)
+    } else {
+        // major = before first dot, minor = between first and second dot
+        (a, b)
+    }
+}
+
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
         None => String::new(),
         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── strip_quotes ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn strip_quotes_double() {
+        assert_eq!(strip_quotes(r#""Ubuntu 22.04""#), "Ubuntu 22.04");
+    }
+
+    #[test]
+    fn strip_quotes_single() {
+        assert_eq!(strip_quotes("'focal'"), "focal");
+    }
+
+    #[test]
+    fn strip_quotes_no_quotes() {
+        assert_eq!(strip_quotes("Ubuntu"), "Ubuntu");
+    }
+
+    #[test]
+    fn strip_quotes_mismatched_leaves_unchanged() {
+        assert_eq!(strip_quotes(r#""Ubuntu'"#), r#""Ubuntu'"#);
+    }
+
+    // ── capitalize ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn capitalize_lowercase() {
+        assert_eq!(capitalize("ubuntu"), "Ubuntu");
+    }
+
+    #[test]
+    fn capitalize_already_capital() {
+        assert_eq!(capitalize("Ubuntu"), "Ubuntu");
+    }
+
+    #[test]
+    fn capitalize_empty() {
+        assert_eq!(capitalize(""), "");
+    }
+
+    // ── adjust_arch ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn adjust_arch_ubuntu_x86_64_becomes_amd64() {
+        assert_eq!(adjust_arch("x86_64", "Ubuntu"), "amd64");
+    }
+
+    #[test]
+    fn adjust_arch_debian_x86_64_becomes_amd64() {
+        assert_eq!(adjust_arch("x86_64", "Debian"), "amd64");
+    }
+
+    #[test]
+    fn adjust_arch_fedora_x86_64_unchanged() {
+        assert_eq!(adjust_arch("x86_64", "Fedora"), "x86_64");
+    }
+
+    #[test]
+    fn adjust_arch_i686_non_gentoo_becomes_i386() {
+        assert_eq!(adjust_arch("i686", "Ubuntu"), "i386");
+    }
+
+    #[test]
+    fn adjust_arch_i686_gentoo_becomes_x86() {
+        assert_eq!(adjust_arch("i686", "Gentoo"), "x86");
+    }
+
+    // ── os_family ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn os_family_ubuntu_is_debian() {
+        assert_eq!(os_family("Ubuntu", ""), "Debian");
+    }
+
+    #[test]
+    fn os_family_centos_is_redhat() {
+        assert_eq!(os_family("CentOS", ""), "RedHat");
+    }
+
+    #[test]
+    fn os_family_fedora_is_redhat() {
+        assert_eq!(os_family("Fedora", ""), "RedHat");
+    }
+
+    #[test]
+    fn os_family_opensuse_is_suse() {
+        assert_eq!(os_family("OpenSuSE", ""), "Suse");
+    }
+
+    #[test]
+    fn os_family_id_like_debian_wins() {
+        assert_eq!(os_family("SomeDistro", "debian"), "Debian");
+    }
+
+    #[test]
+    fn os_family_unknown_returns_name() {
+        assert_eq!(os_family("CustomOS", ""), "CustomOS");
+    }
+
+    // ── distro_release_parts ─────────────────────────────────────────────────
+
+    #[test]
+    fn distro_release_parts_ubuntu_two_component() {
+        let (major, minor) = distro_release_parts("Ubuntu", "20.04");
+        assert_eq!(major, "20.04");
+        assert_eq!(minor, "");
+    }
+
+    #[test]
+    fn distro_release_parts_ubuntu_three_component() {
+        let (major, minor) = distro_release_parts("Ubuntu", "20.04.1");
+        assert_eq!(major, "20.04");
+        assert_eq!(minor, "1");
+    }
+
+    #[test]
+    fn distro_release_parts_centos_two_component() {
+        let (major, minor) = distro_release_parts("CentOS", "7.9");
+        assert_eq!(major, "7");
+        assert_eq!(minor, "9");
+    }
+
+    #[test]
+    fn distro_release_parts_fedora_single_component() {
+        let (major, minor) = distro_release_parts("Fedora", "36");
+        assert_eq!(major, "36");
+        assert_eq!(minor, "");
+    }
+
+    #[test]
+    fn distro_release_parts_linuxmint_three_component() {
+        let (major, minor) = distro_release_parts("LinuxMint", "20.3.1");
+        assert_eq!(major, "20.3");
+        assert_eq!(minor, "1");
     }
 }

@@ -158,6 +158,7 @@ fn main() {
 
     // ── Resolve facts ─────────────────────────────────────────────────────────
     let mut collection = Collection::new();
+    collection.add("facterversion", facter::facts::value::FactValue::String(env!("CARGO_PKG_VERSION").to_string()));
     collection.resolve_all(&resolvers, &blocklist, &ttls, cli.no_cache, cli.timing);
 
     // ── External facts ────────────────────────────────────────────────────────

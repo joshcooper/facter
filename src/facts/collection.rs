@@ -90,7 +90,7 @@ impl Collection {
         const STATIC_LEGACY: &[&str] = &[
             // OS
             "architecture", "hardwaremodel", "operatingsystem",
-            "operatingsystemrelease", "osfamily",
+            "operatingsystemmajrelease", "operatingsystemrelease", "osfamily",
             "lsbdistcodename", "lsbdistdescription", "lsbdistid",
             "lsbdistrelease", "lsbmajdistrelease", "lsbminordistrelease",
             // SELinux flat
@@ -102,6 +102,8 @@ impl Collection {
             "domain", "fqdn", "hostname",
             "interfaces", "ipaddress", "ipaddress6",
             "macaddress", "netmask", "netmask6", "network", "network6",
+            // Uptime flat
+            "uptime", "uptime_days", "uptime_hours", "uptime_seconds",
             // Memory flat
             "memoryfree", "memoryfree_mb", "memorysize", "memorysize_mb",
             "swapencrypted", "swapfree", "swapfree_mb", "swapsize", "swapsize_mb",
@@ -441,6 +443,40 @@ mod tests {
         let mut c = make();
         c.remove_legacy();
         assert!(c.query("processors").is_some());
+    }
+
+    #[test]
+    fn remove_legacy_removes_operatingsystemmajrelease() {
+        let mut c = Collection::new();
+        c.add("operatingsystemmajrelease", FactValue::String("22".into()));
+        c.remove_legacy();
+        assert!(c.query("operatingsystemmajrelease").is_none());
+    }
+
+    #[test]
+    fn remove_legacy_removes_uptime_facts() {
+        let mut c = Collection::new();
+        c.add("uptime", FactValue::String("1 day".into()));
+        c.add("uptime_days", FactValue::Integer(1));
+        c.add("uptime_hours", FactValue::Integer(24));
+        c.add("uptime_seconds", FactValue::Integer(86400));
+        c.remove_legacy();
+        assert!(c.query("uptime").is_none());
+        assert!(c.query("uptime_days").is_none());
+        assert!(c.query("uptime_hours").is_none());
+        assert!(c.query("uptime_seconds").is_none());
+    }
+
+    #[test]
+    fn remove_legacy_keeps_system_uptime() {
+        let mut c = Collection::new();
+        let mut map = IndexMap::new();
+        map.insert("seconds".to_string(), FactValue::Integer(86400));
+        c.add("system_uptime", FactValue::Map(map));
+        c.add("uptime_seconds", FactValue::Integer(86400));
+        c.remove_legacy();
+        assert!(c.query("system_uptime").is_some());
+        assert!(c.query("uptime_seconds").is_none());
     }
 
     // ── sort_keys ─────────────────────────────────────────────────────────────

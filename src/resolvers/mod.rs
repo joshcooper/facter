@@ -11,6 +11,7 @@ pub mod networking;
 pub mod os;
 pub mod path;
 pub mod processors;
+pub mod ruby;
 pub mod ssh;
 pub mod timezone;
 pub mod uptime;
@@ -42,6 +43,7 @@ pub fn default_resolvers() -> Vec<Box<dyn Resolver>> {
         Box::new(fips::FipsResolver),
         Box::new(xen::XenResolver),
         Box::new(path::PathResolver),
+        Box::new(ruby::RubyResolver),
         Box::new(ssh::SshResolver),
         Box::new(cloud::CloudResolver),
     ]
