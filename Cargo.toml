@@ -31,3 +31,5 @@ base64 = "0.22"
 hex = "0.4"
 # Config file (HOCON-compatible JSON5 superset)
 json5 = "0.4"
+# Parallel resolver execution
+rayon = "1"

@@ -1,6 +1,7 @@
 use crate::facts::value::{FactValue, HashDisplay};
 use crate::resolvers::Resolver;
 use indexmap::IndexMap;
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 pub struct Collection {
@@ -26,39 +27,44 @@ impl Collection {
         ignore_cache: bool,
         timing: bool,
     ) {
-        for resolver in resolvers {
-            let name = resolver.name();
-
-            if blocklist.contains(name) {
-                log::debug!("resolver blocked: {}", name);
-                continue;
-            }
-
-            // Check TTL cache
-            let cached = if !ignore_cache {
-                ttls.get(name).and_then(|&ttl| crate::cache::load(name, ttl))
-            } else {
-                None
-            };
-
-            let t0 = std::time::Instant::now();
-            let result = if let Some(cached_facts) = cached {
-                log::debug!("resolver cache hit: {}", name);
-                cached_facts
-            } else {
-                log::debug!("resolving: {}", name);
-                let facts = resolver.resolve();
-                // Persist to cache if a TTL is configured
-                if !ignore_cache && ttls.contains_key(name) {
-                    crate::cache::save(name, &facts);
+        // Run all resolvers in parallel, preserving original order in the output.
+        let results: Vec<(&str, std::time::Duration, Vec<(String, FactValue)>)> = resolvers
+            .par_iter()
+            .filter_map(|resolver| {
+                let name = resolver.name();
+                if blocklist.contains(name) {
+                    log::debug!("resolver blocked: {}", name);
+                    return None;
                 }
-                facts
-            };
-            if timing {
-                eprintln!("{}: {:.6} seconds", name, t0.elapsed().as_secs_f64());
-            }
 
-            for (k, v) in result {
+                let cached = if !ignore_cache {
+                    ttls.get(name).and_then(|&ttl| crate::cache::load(name, ttl))
+                } else {
+                    None
+                };
+
+                let t0 = std::time::Instant::now();
+                let facts = if let Some(cached_facts) = cached {
+                    log::debug!("resolver cache hit: {}", name);
+                    cached_facts
+                } else {
+                    log::debug!("resolving: {}", name);
+                    let facts = resolver.resolve();
+                    if !ignore_cache && ttls.contains_key(name) {
+                        crate::cache::save(name, &facts);
+                    }
+                    facts
+                };
+
+                Some((name, t0.elapsed(), facts))
+            })
+            .collect();
+
+        for (name, elapsed, facts) in results {
+            if timing {
+                eprintln!("{}: {:.6} seconds", name, elapsed.as_secs_f64());
+            }
+            for (k, v) in facts {
                 self.facts.insert(k, v);
             }
         }
