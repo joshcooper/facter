@@ -64,33 +64,36 @@ impl Resolver for OsResolver {
             os.insert("distro".into(), FactValue::Map(distro));
         }
 
-        // SELinux
-        let selinux = collect_selinux();
-        if selinux.supported {
-            facts.push(("selinux".into(), FactValue::Boolean(selinux.enabled)));
-            let mut sel_map: IndexMap<String, FactValue> = IndexMap::new();
-            sel_map.insert("enabled".into(), FactValue::Boolean(selinux.enabled));
-            if selinux.enabled {
-                facts.push(("selinux_enforced".into(), FactValue::Boolean(selinux.enforced)));
-                sel_map.insert("enforced".into(), FactValue::Boolean(selinux.enforced));
-                if !selinux.current_mode.is_empty() {
-                    facts.push(("selinux_current_mode".into(), FactValue::String(selinux.current_mode.clone())));
-                    sel_map.insert("current_mode".into(), FactValue::String(selinux.current_mode));
+        // SELinux (Linux only)
+        #[cfg(target_os = "linux")]
+        {
+            let selinux = collect_selinux();
+            if selinux.supported {
+                facts.push(("selinux".into(), FactValue::Boolean(selinux.enabled)));
+                let mut sel_map: IndexMap<String, FactValue> = IndexMap::new();
+                sel_map.insert("enabled".into(), FactValue::Boolean(selinux.enabled));
+                if selinux.enabled {
+                    facts.push(("selinux_enforced".into(), FactValue::Boolean(selinux.enforced)));
+                    sel_map.insert("enforced".into(), FactValue::Boolean(selinux.enforced));
+                    if !selinux.current_mode.is_empty() {
+                        facts.push(("selinux_current_mode".into(), FactValue::String(selinux.current_mode.clone())));
+                        sel_map.insert("current_mode".into(), FactValue::String(selinux.current_mode));
+                    }
+                    if !selinux.config_mode.is_empty() {
+                        facts.push(("selinux_config_mode".into(), FactValue::String(selinux.config_mode.clone())));
+                        sel_map.insert("config_mode".into(), FactValue::String(selinux.config_mode));
+                    }
+                    if !selinux.config_policy.is_empty() {
+                        facts.push(("selinux_config_policy".into(), FactValue::String(selinux.config_policy.clone())));
+                        sel_map.insert("config_policy".into(), FactValue::String(selinux.config_policy));
+                    }
+                    if !selinux.policy_version.is_empty() {
+                        facts.push(("selinux_policyversion".into(), FactValue::String(selinux.policy_version.clone())));
+                        sel_map.insert("policy_version".into(), FactValue::String(selinux.policy_version));
+                    }
                 }
-                if !selinux.config_mode.is_empty() {
-                    facts.push(("selinux_config_mode".into(), FactValue::String(selinux.config_mode.clone())));
-                    sel_map.insert("config_mode".into(), FactValue::String(selinux.config_mode));
-                }
-                if !selinux.config_policy.is_empty() {
-                    facts.push(("selinux_config_policy".into(), FactValue::String(selinux.config_policy.clone())));
-                    sel_map.insert("config_policy".into(), FactValue::String(selinux.config_policy));
-                }
-                if !selinux.policy_version.is_empty() {
-                    facts.push(("selinux_policyversion".into(), FactValue::String(selinux.policy_version.clone())));
-                    sel_map.insert("policy_version".into(), FactValue::String(selinux.policy_version));
-                }
+                os.insert("selinux".into(), FactValue::Map(sel_map));
             }
-            os.insert("selinux".into(), FactValue::Map(sel_map));
         }
 
         // Legacy lsb* flat facts (sourced from os-release when lsb_release is absent)
@@ -113,12 +116,104 @@ impl Resolver for OsResolver {
             facts.push(("lsbdistdescription".into(), FactValue::String(desc.clone())));
         }
 
+        // macOS-specific facts from SystemVersion.plist
+        #[cfg(target_os = "macos")]
+        {
+            let sv = read_system_version();
+            if !sv.product_name.is_empty() {
+                facts.push(("macosx_productname".into(), FactValue::String(sv.product_name.clone())));
+            }
+            if !sv.product_version.is_empty() {
+                facts.push(("macosx_productversion".into(), FactValue::String(sv.product_version.clone())));
+                facts.push(("macosx_productversion_major".into(), FactValue::String(sv.major.clone())));
+                facts.push(("macosx_productversion_minor".into(), FactValue::String(sv.minor.clone())));
+                if !sv.patch.is_empty() {
+                    facts.push(("macosx_productversion_patch".into(), FactValue::String(sv.patch.clone())));
+                }
+            }
+            if !sv.build.is_empty() {
+                facts.push(("macosx_buildversion".into(), FactValue::String(sv.build.clone())));
+            }
+
+            // os.macosx structured sub-map
+            if !sv.product_version.is_empty() {
+                let mut ver: IndexMap<String, FactValue> = IndexMap::new();
+                ver.insert("full".into(), FactValue::String(sv.product_version.clone()));
+                ver.insert("major".into(), FactValue::String(sv.major.clone()));
+                ver.insert("minor".into(), FactValue::String(sv.minor.clone()));
+                if !sv.patch.is_empty() {
+                    ver.insert("patch".into(), FactValue::String(sv.patch.clone()));
+                }
+                let mut macosx: IndexMap<String, FactValue> = IndexMap::new();
+                macosx.insert("version".into(), FactValue::Map(ver));
+                if !sv.build.is_empty() {
+                    macosx.insert("build".into(), FactValue::String(sv.build.clone()));
+                }
+                os.insert("macosx".into(), FactValue::Map(macosx));
+            }
+        }
+
         if !os.is_empty() {
             facts.push(("os".into(), FactValue::Map(os)));
         }
 
         facts
     }
+}
+
+// ── macOS SystemVersion ───────────────────────────────────────────────────────
+
+#[cfg(target_os = "macos")]
+struct SystemVersion {
+    product_name: String,
+    product_version: String,
+    major: String,
+    minor: String,
+    patch: String,
+    build: String,
+}
+
+/// Parse the XML plist content of SystemVersion.plist into a SystemVersion struct.
+/// Pure function — no I/O, so it's testable on any platform.
+#[allow(dead_code)]
+fn parse_system_version_plist(content: &str) -> (String, String, String) {
+    // Minimal plist key→string value extractor (no external dep required)
+    let mut map: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    let mut lines = content.lines().peekable();
+    while let Some(line) = lines.next() {
+        let line = line.trim();
+        if let Some(key) = line.strip_prefix("<key>").and_then(|s| s.strip_suffix("</key>")) {
+            if let Some(val_line) = lines.next() {
+                let val_line = val_line.trim();
+                if let Some(val) = val_line.strip_prefix("<string>").and_then(|s| s.strip_suffix("</string>")) {
+                    map.insert(key, val);
+                }
+            }
+        }
+    }
+    let name = map.get("ProductName").copied().unwrap_or("").to_string();
+    let version = map.get("ProductVersion").copied()
+        .or_else(|| map.get("ProductUserVisibleVersion").copied())
+        .unwrap_or("")
+        .to_string();
+    let build = map.get("ProductBuildVersion").copied().unwrap_or("").to_string();
+    (name, version, build)
+}
+
+#[cfg(target_os = "macos")]
+fn read_system_version() -> SystemVersion {
+    let content = std::fs::read_to_string(
+        "/System/Library/CoreServices/SystemVersion.plist",
+    )
+    .unwrap_or_default();
+    let (product_name, product_version, build) = parse_system_version_plist(&content);
+
+    let mut parts = product_version.splitn(3, '.');
+    let major = parts.next().unwrap_or("").to_string();
+    let minor = parts.next().unwrap_or("").to_string();
+    let patch = parts.next().unwrap_or("").to_string();
+
+    SystemVersion { product_name, product_version, major, minor, patch, build }
 }
 
 // ── SELinux ───────────────────────────────────────────────────────────────────
@@ -223,6 +318,7 @@ fn adjust_arch(arch: &str, distro: &str) -> String {
 }
 
 /// Parse /etc/os-release (and /etc/lsb-release as fallback) into a key→value map.
+#[cfg(not(target_os = "macos"))]
 fn read_os_release() -> HashMap<String, String> {
     let mut map = HashMap::new();
     for path in &["/etc/os-release", "/usr/lib/os-release", "/etc/lsb-release"] {
@@ -245,6 +341,24 @@ fn read_os_release() -> HashMap<String, String> {
     map
 }
 
+#[cfg(target_os = "macos")]
+fn read_os_release() -> HashMap<String, String> {
+    // Populate keys that os_name/os_family/parse_release understand
+    let mut map = HashMap::new();
+    map.insert("ID".to_string(), "macos".to_string());
+    map.insert("NAME".to_string(), "Darwin".to_string());
+    // Use uname -r for the kernel release (operatingsystemrelease on Darwin)
+    let mut u: libc::utsname = unsafe { std::mem::zeroed() };
+    if unsafe { libc::uname(&mut u) } == 0 {
+        use std::ffi::CStr;
+        let release = unsafe { CStr::from_ptr(u.release.as_ptr()).to_string_lossy().into_owned() };
+        if !release.is_empty() {
+            map.insert("VERSION_ID".to_string(), release);
+        }
+    }
+    map
+}
+
 fn strip_quotes(s: &str) -> String {
     if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
         s[1..s.len() - 1].to_string()
@@ -260,7 +374,7 @@ fn os_name(or: &HashMap<String, String>) -> String {
 
     // Map common IDs to the names facter uses
     match id.to_lowercase().as_str() {
-        "ubuntu" => "Ubuntu",
+        "macos" | "darwin" => "Darwin",
         "debian" => "Debian",
         "linuxmint" => "LinuxMint",
         "raspbian" => "Raspbian",
@@ -299,6 +413,10 @@ fn os_name(or: &HashMap<String, String>) -> String {
 fn os_family(name: &str, id_like: &str) -> String {
     let n = name.to_lowercase();
     let il = id_like.to_lowercase();
+
+    if n.contains("darwin") {
+        return "Darwin".into();
+    }
 
     let debian = ["ubuntu", "debian", "linuxmint", "raspbian", "kali", "devuan"];
     let redhat = [
@@ -577,5 +695,65 @@ mod tests {
         let (major, minor) = distro_release_parts("LinuxMint", "20.3.1");
         assert_eq!(major, "20.3");
         assert_eq!(minor, "1");
+    }
+
+    // ── parse_system_version_plist ───────────────────────────────────────────
+
+    #[test]
+    fn parse_system_version_plist_ventura() {
+        let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>ProductBuildVersion</key>
+    <string>22G90</string>
+    <key>ProductName</key>
+    <string>macOS</string>
+    <key>ProductUserVisibleVersion</key>
+    <string>13.5.1</string>
+    <key>ProductVersion</key>
+    <string>13.5.1</string>
+</dict>
+</plist>"#;
+        let (name, version, build) = parse_system_version_plist(plist);
+        assert_eq!(name, "macOS");
+        assert_eq!(version, "13.5.1");
+        assert_eq!(build, "22G90");
+    }
+
+    #[test]
+    fn parse_system_version_plist_empty() {
+        let (name, version, build) = parse_system_version_plist("");
+        assert_eq!(name, "");
+        assert_eq!(version, "");
+        assert_eq!(build, "");
+    }
+
+    #[test]
+    fn parse_system_version_plist_missing_build() {
+        let plist = r#"<plist><dict>
+    <key>ProductName</key>
+    <string>macOS</string>
+    <key>ProductVersion</key>
+    <string>14.0</string>
+</dict></plist>"#;
+        let (name, version, build) = parse_system_version_plist(plist);
+        assert_eq!(name, "macOS");
+        assert_eq!(version, "14.0");
+        assert_eq!(build, "");
+    }
+
+    // ── macOS os_name / os_family ────────────────────────────────────────────
+
+    #[test]
+    fn os_name_macos_id() {
+        let mut or = std::collections::HashMap::new();
+        or.insert("ID".to_string(), "macos".to_string());
+        assert_eq!(os_name(&or), "Darwin");
+    }
+
+    #[test]
+    fn os_family_darwin_returns_darwin() {
+        assert_eq!(os_family("Darwin", ""), "Darwin");
     }
 }

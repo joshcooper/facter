@@ -260,6 +260,27 @@ fn collect_interfaces() -> Vec<Interface> {
                     };
                     entry.ipv6.push(Ipv6Binding { address, netmask, flags: Vec::new() });
                 }
+
+                // macOS provides MAC addresses via AF_LINK entries in getifaddrs
+                #[cfg(target_os = "macos")]
+                if family == libc::AF_LINK as i32 {
+                    let sdl = ifa.ifa_addr as *const libc::sockaddr_dl;
+                    let nlen = (*sdl).sdl_nlen as usize;
+                    let alen = (*sdl).sdl_alen as usize;
+                    if alen == 6 {
+                        let data = (*sdl).sdl_data.as_ptr();
+                        let mac_bytes =
+                            std::slice::from_raw_parts(data.add(nlen) as *const u8, alen);
+                        let mac = format!(
+                            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                            mac_bytes[0], mac_bytes[1], mac_bytes[2],
+                            mac_bytes[3], mac_bytes[4], mac_bytes[5]
+                        );
+                        if mac != "00:00:00:00:00:00" {
+                            entry.mac = Some(mac);
+                        }
+                    }
+                }
             }
 
             ptr = ifa.ifa_next;
@@ -268,7 +289,8 @@ fn collect_interfaces() -> Vec<Interface> {
         libc::freeifaddrs(ifaddrs);
     }
 
-    // Augment with MAC, MTU, and additional fields from sysfs
+    // Augment with MAC, MTU, and additional fields from sysfs (Linux)
+    #[cfg(target_os = "linux")]
     for iface in map.values_mut() {
         let base = format!("/sys/class/net/{}", iface.name);
 
@@ -305,13 +327,24 @@ fn collect_interfaces() -> Vec<Interface> {
         }
     }
 
-    // Augment IPv6 bindings with IFA_F_* flags from /proc/net/if_inet6
-    let ifa_flags = read_if_inet6_flags();
+    // macOS: augment with MTU via SIOCGIFMTU ioctl and physical flag by convention
+    #[cfg(target_os = "macos")]
     for iface in map.values_mut() {
-        for binding in iface.ipv6.iter_mut() {
-            let key = (iface.name.clone(), binding.address);
-            if let Some(flags) = ifa_flags.get(&key) {
-                binding.flags = flags.clone();
+        iface.mtu = macos_get_mtu(&iface.name);
+        // Physical interfaces on macOS are en0, en1, …; loopback is lo0; utun* are VPN tunnels
+        iface.physical = iface.name.starts_with("en");
+    }
+
+    // Augment IPv6 bindings with IFA_F_* flags from /proc/net/if_inet6 (Linux only)
+    #[cfg(target_os = "linux")]
+    {
+        let ifa_flags = read_if_inet6_flags();
+        for iface in map.values_mut() {
+            for binding in iface.ipv6.iter_mut() {
+                let key = (iface.name.clone(), binding.address);
+                if let Some(flags) = ifa_flags.get(&key) {
+                    binding.flags = flags.clone();
+                }
             }
         }
     }
@@ -322,6 +355,7 @@ fn collect_interfaces() -> Vec<Interface> {
 }
 
 /// Parse /proc/net/if_inet6 and return a map of (ifname, addr) → flag name list.
+#[cfg(target_os = "linux")]
 fn read_if_inet6_flags() -> HashMap<(String, Ipv6Addr), Vec<String>> {
     const IFA_FLAGS: &[(u32, &str)] = &[
         (0x01, "secondary"),
@@ -381,6 +415,7 @@ fn read_if_inet6_flags() -> HashMap<(String, Ipv6Addr), Vec<String>> {
 // ── Routing table ────────────────────────────────────────────────────────────
 
 /// Read /proc/net/route to find the interface used for the default route.
+#[cfg(target_os = "linux")]
 fn get_primary_interface() -> Option<String> {
     let content = fs::read_to_string("/proc/net/route").ok()?;
     for line in content.lines().skip(1) {
@@ -397,6 +432,59 @@ fn get_primary_interface() -> Option<String> {
         }
     }
     None
+}
+
+/// Use `route -n get default` to find the primary interface on macOS.
+#[cfg(target_os = "macos")]
+fn get_primary_interface() -> Option<String> {
+    let out = std::process::Command::new("route")
+        .args(["-n", "get", "default"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(iface) = line.strip_prefix("interface:") {
+            let iface = iface.trim().to_string();
+            if !iface.is_empty() {
+                return Some(iface);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn get_primary_interface() -> Option<String> {
+    None
+}
+
+/// Get MTU for an interface on macOS using SIOCGIFMTU ioctl.
+#[cfg(target_os = "macos")]
+fn macos_get_mtu(name: &str) -> Option<u64> {
+    use std::ffi::CString;
+    let cname = CString::new(name).ok()?;
+    unsafe {
+        let sock = libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0);
+        if sock < 0 {
+            return None;
+        }
+        let mut ifr: libc::ifreq = std::mem::zeroed();
+        let src = cname.as_bytes_with_nul();
+        let len = src.len().min(libc::IFNAMSIZ);
+        std::ptr::copy_nonoverlapping(
+            src.as_ptr(),
+            ifr.ifr_name.as_mut_ptr() as *mut u8,
+            len,
+        );
+        let ret = libc::ioctl(sock, libc::SIOCGIFMTU, &mut ifr as *mut _);
+        libc::close(sock);
+        if ret == 0 {
+            Some(ifr.ifr_ifru.ifru_mtu as u64)
+        } else {
+            None
+        }
+    }
 }
 
 // ── Hostname / domain ────────────────────────────────────────────────────────
@@ -548,6 +636,7 @@ fn ipv4_network(addr: Ipv4Addr, netmask: Ipv4Addr) -> Ipv4Addr {
 
 /// Parse dhclient lease files and return a map of interface name → DHCP server address.
 /// The last lease block per interface wins (most recent).
+#[cfg(target_os = "linux")]
 fn collect_dhcp_servers() -> HashMap<String, String> {
     const LEASE_FILES: &[&str] = &[
         "/var/lib/dhcp/dhclient.leases",
@@ -576,6 +665,29 @@ fn collect_dhcp_servers() -> HashMap<String, String> {
     }
 
     result
+}
+
+/// Parse macOS DHCP leases from /var/db/dhclient/ (ISC dhclient) or
+/// /private/var/db/NetworkConfiguration (system preference).
+#[cfg(target_os = "macos")]
+fn collect_dhcp_servers() -> HashMap<String, String> {
+    let mut result: HashMap<String, String> = HashMap::new();
+
+    // ISC dhclient lease files (if dhclient is installed)
+    if let Ok(entries) = fs::read_dir("/var/db/dhclient") {
+        for entry in entries.flatten() {
+            if let Ok(content) = fs::read_to_string(entry.path()) {
+                parse_dhclient_leases(&content, &mut result);
+            }
+        }
+    }
+
+    result
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn collect_dhcp_servers() -> HashMap<String, String> {
+    HashMap::new()
 }
 
 fn parse_dhclient_leases(content: &str, result: &mut HashMap<String, String>) {

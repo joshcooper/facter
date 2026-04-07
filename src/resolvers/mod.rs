@@ -40,7 +40,9 @@ pub fn default_resolvers() -> Vec<Box<dyn Resolver>> {
         Box::new(disk::DiskResolver),
         Box::new(filesystem::FilesystemResolver),
         Box::new(load_average::LoadAverageResolver),
+        #[cfg(target_os = "linux")]
         Box::new(fips::FipsResolver),
+        #[cfg(target_os = "linux")]
         Box::new(xen::XenResolver),
         Box::new(path::PathResolver),
         Box::new(ruby::RubyResolver),

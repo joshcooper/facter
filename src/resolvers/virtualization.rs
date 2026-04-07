@@ -30,6 +30,7 @@ impl Resolver for VirtualizationResolver {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn detect() -> (String, bool) {
     // 1. DMI / SMBIOS vendor (most reliable on bare-metal VMs)
     if let Some((virt, is_v)) = check_dmi() {
@@ -78,6 +79,31 @@ fn detect() -> (String, bool) {
         }
     }
 
+    ("physical".to_string(), false)
+}
+
+#[cfg(target_os = "macos")]
+fn detect() -> (String, bool) {
+    use crate::platform::macos::sysctl_string;
+    // hw.model is "VMwareX,Y" on VMware Fusion, "Parallels..." on Parallels,
+    // otherwise a real Mac model like "MacBookPro18,1".
+    if let Some(model) = sysctl_string("hw.model") {
+        let m = model.to_lowercase();
+        if m.contains("vmware") {
+            return ("vmware".to_string(), true);
+        }
+        if m.contains("parallels") {
+            return ("parallels".to_string(), true);
+        }
+        if m.contains("virtualbox") {
+            return ("virtualbox".to_string(), true);
+        }
+    }
+    ("physical".to_string(), false)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn detect() -> (String, bool) {
     ("physical".to_string(), false)
 }
 

@@ -85,6 +85,7 @@ const VIRTUAL_FS: &[&str] = &[
     "securityfs", "selinuxfs", "sysfs", "tracefs",
 ];
 
+#[cfg(not(target_os = "macos"))]
 fn collect_mountpoints() -> Vec<MountInfo> {
     let content = match fs::read_to_string("/proc/mounts") {
         Ok(c) => c,
@@ -134,6 +135,65 @@ fn collect_mountpoints() -> Vec<MountInfo> {
     mounts
 }
 
+/// Use getmntinfo() to enumerate mounts on macOS.
+#[cfg(target_os = "macos")]
+fn collect_mountpoints() -> Vec<MountInfo> {
+    use std::ffi::CStr;
+
+    const VIRTUAL_FS_MACOS: &[&str] = &[
+        "autofs", "devfs", "mtmfs",
+    ];
+
+    let mut mounts = Vec::new();
+    let mut mntbuf: *mut libc::statfs = std::ptr::null_mut();
+    let count = unsafe { libc::getmntinfo(&mut mntbuf, libc::MNT_NOWAIT) };
+    if count <= 0 {
+        return mounts;
+    }
+
+    let mut seen_mps: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for i in 0..count as usize {
+        let m = unsafe { &*mntbuf.add(i) };
+        let fs_type = unsafe {
+            CStr::from_ptr(m.f_fstypename.as_ptr()).to_string_lossy().into_owned()
+        };
+        if VIRTUAL_FS.contains(&fs_type.as_str()) || VIRTUAL_FS_MACOS.contains(&fs_type.as_str()) {
+            continue;
+        }
+        let mountpoint = unsafe {
+            CStr::from_ptr(m.f_mntonname.as_ptr()).to_string_lossy().into_owned()
+        };
+        if seen_mps.contains(&mountpoint) {
+            continue;
+        }
+        seen_mps.insert(mountpoint.clone());
+        let device = unsafe {
+            CStr::from_ptr(m.f_mntfromname.as_ptr()).to_string_lossy().into_owned()
+        };
+        let frsize = m.f_bsize as u64;
+        let size_bytes = m.f_blocks as u64 * frsize;
+        let available_bytes = m.f_bavail as u64 * frsize;
+        let used_bytes = size_bytes.saturating_sub(available_bytes);
+        let options = mount_flags_to_options(m.f_flags);
+        mounts.push(MountInfo {
+            device, mountpoint, fs_type, options, size_bytes, available_bytes, used_bytes,
+        });
+    }
+    mounts.sort_by(|a, b| a.mountpoint.cmp(&b.mountpoint));
+    mounts
+}
+
+/// Convert macOS mount flags bitmask to option strings (ro/rw, nosuid, etc.).
+#[cfg(target_os = "macos")]
+fn mount_flags_to_options(flags: u32) -> Vec<String> {
+    let mut opts = Vec::new();
+    if flags & libc::MNT_RDONLY != 0 { opts.push("ro".to_string()); } else { opts.push("rw".to_string()); }
+    if flags & libc::MNT_NOSUID != 0 { opts.push("nosuid".to_string()); }
+    if flags & libc::MNT_NODEV != 0 { opts.push("nodev".to_string()); }
+    if flags & libc::MNT_NOEXEC != 0 { opts.push("noexec".to_string()); }
+    opts
+}
+
 fn statvfs_info(path: &str) -> (u64, u64) {
     let cpath = match CString::new(path) {
         Ok(p) => p,
@@ -174,6 +234,7 @@ fn build_mount_map(m: &MountInfo) -> FactValue {
 
 // ── Filesystem types ──────────────────────────────────────────────────────────
 
+#[cfg(not(target_os = "macos"))]
 fn collect_filesystem_types() -> HashSet<String> {
     let content = match fs::read_to_string("/proc/filesystems") {
         Ok(c) => c,
@@ -188,8 +249,36 @@ fn collect_filesystem_types() -> HashSet<String> {
         .collect()
 }
 
+/// On macOS, collect filesystem types from the current mounts (getmntinfo).
+#[cfg(target_os = "macos")]
+fn collect_filesystem_types() -> HashSet<String> {
+    use std::ffi::CStr;
+    let mut types = HashSet::new();
+    let mut mntbuf: *mut libc::statfs = std::ptr::null_mut();
+    let count = unsafe { libc::getmntinfo(&mut mntbuf, libc::MNT_NOWAIT) };
+    if count <= 0 {
+        return types;
+    }
+    for i in 0..count as usize {
+        let m = unsafe { &*mntbuf.add(i) };
+        let fs_type = unsafe {
+            CStr::from_ptr(m.f_fstypename.as_ptr()).to_string_lossy().into_owned()
+        };
+        if !fs_type.is_empty() {
+            types.insert(fs_type);
+        }
+    }
+    types
+}
+
 // ── Partitions ────────────────────────────────────────────────────────────────
 
+#[cfg(target_os = "macos")]
+fn collect_partitions(_mounts: &[MountInfo]) -> Vec<PartitionInfo> {
+    Vec::new()
+}
+
+#[cfg(not(target_os = "macos"))]
 fn collect_partitions(mounts: &[MountInfo]) -> Vec<PartitionInfo> {
     // Build a mount lookup: device -> (mountpoint, fstype); also include swap devices
     let swap_devices = collect_swap_devices();
@@ -373,6 +462,7 @@ fn collect_partitions(mounts: &[MountInfo]) -> Vec<PartitionInfo> {
     partitions
 }
 
+#[cfg(not(target_os = "macos"))]
 struct LsblkInfo {
     fstype: Option<String>,
     parttype: Option<String>,
@@ -380,6 +470,7 @@ struct LsblkInfo {
 }
 
 /// Run `lsblk -o PATH,FSTYPE,PARTTYPE,UUID --json` and return a map of device path → info.
+#[cfg(not(target_os = "macos"))]
 fn run_lsblk() -> HashMap<String, LsblkInfo> {
     let output = match Command::new("lsblk")
         .args(["-o", "PATH,FSTYPE,PARTTYPE,UUID", "--json"])
@@ -418,6 +509,7 @@ fn run_lsblk() -> HashMap<String, LsblkInfo> {
 }
 
 /// Read /proc/swaps and return the list of swap device paths.
+#[cfg(not(target_os = "macos"))]
 fn collect_swap_devices() -> Vec<String> {
     let content = match fs::read_to_string("/proc/swaps") {
         Ok(c) => c,
@@ -432,6 +524,7 @@ fn collect_swap_devices() -> Vec<String> {
 }
 
 /// Read filesystem type for a DM device from its udev uevent file.
+#[cfg(not(target_os = "macos"))]
 fn read_dm_fstype(sysfs_path: &Path) -> Option<String> {
     let uevent = fs::read_to_string(sysfs_path.join("uevent")).ok()?;
     for line in uevent.lines() {
@@ -452,15 +545,18 @@ fn read_dm_fstype(sysfs_path: &Path) -> Option<String> {
     None
 }
 
+#[cfg(not(target_os = "macos"))]
 fn build_uuid_map() -> HashMap<String, String> {
     read_disk_by_dir("/dev/disk/by-uuid")
 }
 
+#[cfg(not(target_os = "macos"))]
 fn build_label_map() -> HashMap<String, String> {
     read_disk_by_dir("/dev/disk/by-label")
 }
 
 /// Maps resolved device path (e.g. `/dev/mapper/foo`) → uuid identifier.
+#[cfg(not(target_os = "macos"))]
 fn build_devpath_uuid_map() -> HashMap<String, String> {
     let mut map = HashMap::new();
     if let Ok(entries) = fs::read_dir("/dev/disk/by-uuid") {
@@ -485,6 +581,7 @@ fn build_devpath_uuid_map() -> HashMap<String, String> {
 
 /// Read a /dev/disk/by-<X>/ directory, mapping device short name → identifier.
 /// Symlink names may use `\xNN` udev escaping (e.g. `\x20` for space); these are unescaped.
+#[cfg(not(target_os = "macos"))]
 fn read_disk_by_dir(dir: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
     if let Ok(entries) = fs::read_dir(dir) {

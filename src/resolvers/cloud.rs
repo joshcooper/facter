@@ -57,11 +57,36 @@ impl Resolver for CloudResolver {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn dmi_vendor() -> String {
     fs::read_to_string("/sys/class/dmi/id/sys_vendor")
         .unwrap_or_default()
         .trim()
         .to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn dmi_vendor() -> String {
+    use std::process::Command;
+    // ioreg gives us the platform expert node which contains the manufacturer
+    let out = Command::new("ioreg")
+        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+        .output()
+        .unwrap_or_default();
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        if line.contains("manufacturer") {
+            if let Some(val) = line.split('"').nth(3) {
+                return val.to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn dmi_vendor() -> String {
+    String::new()
 }
 
 // ── EC2 (IMDSv1) ─────────────────────────────────────────────────────────────

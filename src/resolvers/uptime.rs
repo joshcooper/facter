@@ -40,11 +40,40 @@ impl Resolver for UptimeResolver {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn read_uptime_seconds() -> Option<u64> {
     let content = fs::read_to_string("/proc/uptime").ok()?;
     let secs_str = content.split_whitespace().next()?;
     let secs: f64 = secs_str.parse().ok()?;
     Some(secs as u64)
+}
+
+#[cfg(target_os = "macos")]
+fn read_uptime_seconds() -> Option<u64> {
+    use std::ffi::CString;
+    let name = CString::new("kern.boottime").ok()?;
+    let mut boottime: libc::timeval = unsafe { std::mem::zeroed() };
+    let mut size = std::mem::size_of::<libc::timeval>();
+    let ret = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            &mut boottime as *mut _ as *mut _,
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if ret != 0 {
+        return None;
+    }
+    let now = unsafe { libc::time(std::ptr::null_mut()) };
+    let uptime = now - boottime.tv_sec;
+    if uptime < 0 { None } else { Some(uptime as u64) }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn read_uptime_seconds() -> Option<u64> {
+    None
 }
 
 fn format_uptime(days: u64, hours: u64, minutes: u64) -> String {

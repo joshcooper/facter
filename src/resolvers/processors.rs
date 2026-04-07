@@ -1,8 +1,10 @@
 use crate::facts::value::FactValue;
 use crate::resolvers::Resolver;
 use indexmap::IndexMap;
-use std::collections::HashSet;
 use std::ffi::CStr;
+#[cfg(target_os = "linux")]
+use std::collections::HashSet;
+#[cfg(target_os = "linux")]
 use std::fs;
 
 pub struct ProcessorsResolver;
@@ -81,6 +83,7 @@ struct CpuInfo {
     speed: Option<String>,
 }
 
+#[cfg(target_os = "linux")]
 fn parse_cpuinfo() -> CpuInfo {
     let content = fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
 
@@ -163,6 +166,7 @@ fn parse_cpuinfo() -> CpuInfo {
 }
 
 /// Format CPU speed as "X.XX GHz" or "XXX MHz".
+#[cfg(target_os = "linux")]
 fn cpu_speed(mhz: f64) -> Option<String> {
     if mhz <= 0.0 {
         // Try scaling_max_freq (in kHz)
@@ -175,6 +179,56 @@ fn cpu_speed(mhz: f64) -> Option<String> {
         return None;
     }
     Some(format_mhz(mhz))
+}
+
+#[cfg(target_os = "macos")]
+fn parse_cpuinfo() -> CpuInfo {
+    use crate::platform::macos::{sysctl_i32, sysctl_string, sysctl_u64};
+
+    let logical_count = sysctl_i32("hw.logicalcpu").unwrap_or(0).max(0) as usize;
+    let physical_count = sysctl_i32("hw.physicalcpu").unwrap_or(0).max(0) as usize;
+    // threads per core
+    let threads = if physical_count > 0 { logical_count / physical_count } else { 0 };
+
+    // Brand string exists on Intel Macs; fall back to hw.model on Apple Silicon
+    let model = sysctl_string("machdep.cpu.brand_string")
+        .filter(|s| !s.is_empty())
+        .or_else(|| sysctl_string("hw.model"))
+        .unwrap_or_default();
+    let models = if model.is_empty() {
+        Vec::new()
+    } else {
+        vec![model; logical_count.max(1)]
+    };
+
+    // hw.cpufrequency / hw.cpufrequency_max are absent on Apple Silicon (returns None)
+    let speed = sysctl_u64("hw.cpufrequency_max")
+        .or_else(|| sysctl_u64("hw.cpufrequency"))
+        .map(|hz| format_mhz(hz as f64 / 1_000_000.0));
+
+    CpuInfo {
+        logical_count,
+        physical_count,
+        cores: physical_count,
+        threads,
+        models,
+        speed,
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn parse_cpuinfo() -> CpuInfo {
+    // POSIX fallback: at least get the logical processor count
+    let logical = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_ONLN) };
+    let logical_count = if logical > 0 { logical as usize } else { 1 };
+    CpuInfo {
+        logical_count,
+        physical_count: logical_count,
+        cores: 0,
+        threads: 0,
+        models: Vec::new(),
+        speed: None,
+    }
 }
 
 fn format_mhz(mhz: f64) -> String {
@@ -195,6 +249,12 @@ fn cpu_isa() -> String {
 }
 
 /// Compute x86_64 microarchitecture level extensions from /proc/cpuinfo flags.
+#[cfg(not(target_os = "linux"))]
+fn cpu_extensions(_isa: &str) -> Vec<String> {
+    Vec::new()
+}
+
+#[cfg(target_os = "linux")]
 fn cpu_extensions(isa: &str) -> Vec<String> {
     if isa != "x86_64" {
         return Vec::new();
