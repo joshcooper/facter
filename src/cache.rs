@@ -58,6 +58,29 @@ pub fn save(resolver_name: &str, facts: &[(String, FactValue)]) {
     }
 }
 
+/// Delete all cached resolver files, invalidating the on-disk TTL cache.
+///
+/// Matches Ruby `Facter.flush()`.  Silently ignores errors (missing dir,
+/// permission denied).  Only `.json` files in the cache directory are removed;
+/// subdirectories and other files are left untouched.
+pub fn flush() {
+    flush_dir(&cache_dir());
+}
+
+/// Inner implementation — accepts any directory so tests can use a temp dir.
+pub(crate) fn flush_dir(dir: &Path) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("json") {
+            let _ = fs::remove_file(&path);
+        }
+    }
+}
+
 fn cache_path(resolver_name: &str) -> PathBuf {
     // Sanitise resolver name for use as a filename
     let safe: String = resolver_name
@@ -223,6 +246,57 @@ mod tests {
         let age = SystemTime::now().duration_since(modified).unwrap();
         assert!(age < Duration::from_secs(5), "freshly written file should be <5s old");
         let _ = fs::remove_dir_all(tmp);
+    }
+
+    // ── flush_dir ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn flush_dir_removes_json_files() {
+        let tmp = std::env::temp_dir().join("facter_flush_test_removes");
+        fs::create_dir_all(&tmp).unwrap();
+        let facts = vec![("k".to_string(), FactValue::String("v".into()))];
+        write_cache_file(&tmp, "kernel", &facts);
+        write_cache_file(&tmp, "memory", &facts);
+        assert!(tmp.join("kernel.json").exists());
+        assert!(tmp.join("memory.json").exists());
+
+        flush_dir(&tmp);
+
+        assert!(!tmp.join("kernel.json").exists());
+        assert!(!tmp.join("memory.json").exists());
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn flush_dir_ignores_non_json_files() {
+        let tmp = std::env::temp_dir().join("facter_flush_test_non_json");
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("notes.txt"), b"hello").unwrap();
+        let facts = vec![("k".to_string(), FactValue::String("v".into()))];
+        write_cache_file(&tmp, "kernel", &facts);
+
+        flush_dir(&tmp);
+
+        // .txt file must survive
+        assert!(tmp.join("notes.txt").exists());
+        assert!(!tmp.join("kernel.json").exists());
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn flush_dir_on_missing_dir_is_noop() {
+        let tmp = std::env::temp_dir().join("facter_flush_test_missing_dir_xyz_abc");
+        // Ensure it doesn't exist
+        let _ = fs::remove_dir_all(&tmp);
+        flush_dir(&tmp); // must not panic
+    }
+
+    #[test]
+    fn flush_dir_on_empty_dir_is_noop() {
+        let tmp = std::env::temp_dir().join("facter_flush_test_empty");
+        fs::create_dir_all(&tmp).unwrap();
+        flush_dir(&tmp); // must not panic
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     // ── JSON deserialisation of cached facts ─────────────────────────────────

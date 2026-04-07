@@ -88,6 +88,16 @@ impl Collection {
         }
     }
 
+    /// Clear all resolved facts from the collection.
+    ///
+    /// Matches C++ `collection::clear()` (in-memory facts only).  After this,
+    /// `resolve_all()` can be called again to re-populate the collection.
+    /// To also invalidate the on-disk TTL cache — matching Ruby `Facter.clear()`
+    /// which calls `flush` then `reset` — follow this with `cache::flush()`.
+    pub fn clear(&mut self) {
+        self.facts.clear();
+    }
+
     /// Re-sort facts alphabetically (call after adding external/custom facts).
     pub fn sort_keys(&mut self) {
         self.facts.sort_keys();
@@ -535,6 +545,41 @@ mod tests {
         assert!(c.facts.get("os.name").is_none());
         // structured os.name still reachable via traversal
         assert!(matches!(c.query("os.name"), Some(FactValue::String(s)) if s == "Ubuntu"));
+    }
+
+    // ── clear ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn clear_empties_all_facts() {
+        let mut c = make();
+        c.clear();
+        assert!(c.query("kernel").is_none());
+        assert!(c.query("os").is_none());
+        assert!(c.query("processors").is_none());
+        assert!(c.facts.is_empty());
+    }
+
+    #[test]
+    fn clear_allows_re_add_after() {
+        let mut c = make();
+        c.clear();
+        c.add("kernel", FactValue::String("Linux".into()));
+        assert!(matches!(c.query("kernel"), Some(FactValue::String(s)) if s == "Linux"));
+    }
+
+    #[test]
+    fn clear_on_empty_collection_is_noop() {
+        let mut c = Collection::new();
+        c.clear(); // must not panic
+        assert!(c.facts.is_empty());
+    }
+
+    #[test]
+    fn clear_twice_is_idempotent() {
+        let mut c = make();
+        c.clear();
+        c.clear();
+        assert!(c.facts.is_empty());
     }
 
     // ── sort_keys ─────────────────────────────────────────────────────────────
