@@ -1,7 +1,6 @@
 use crate::facts::value::FactValue;
 use crate::resolvers::Resolver;
 use indexmap::IndexMap;
-use std::fs;
 use std::time::Duration;
 
 pub struct CloudResolver;
@@ -16,7 +15,7 @@ impl Resolver for CloudResolver {
     fn resolve(&self) -> Vec<(String, FactValue)> {
         let mut facts = Vec::new();
 
-        let vendor = dmi_vendor();
+        let vendor = crate::platform::dmi_vendor();
         let v = vendor.to_lowercase();
 
         // Only probe endpoints likely to exist based on DMI vendor.
@@ -57,38 +56,6 @@ impl Resolver for CloudResolver {
     }
 }
 
-#[cfg(target_os = "linux")]
-fn dmi_vendor() -> String {
-    fs::read_to_string("/sys/class/dmi/id/sys_vendor")
-        .unwrap_or_default()
-        .trim()
-        .to_string()
-}
-
-#[cfg(target_os = "macos")]
-fn dmi_vendor() -> String {
-    use std::process::Command;
-    // ioreg gives us the platform expert node which contains the manufacturer
-    let out = Command::new("ioreg")
-        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
-        .output()
-        .unwrap_or_default();
-    let text = String::from_utf8_lossy(&out.stdout);
-    for line in text.lines() {
-        if line.contains("manufacturer") {
-            if let Some(val) = line.split('"').nth(3) {
-                return val.to_string();
-            }
-        }
-    }
-    String::new()
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn dmi_vendor() -> String {
-    String::new()
-}
-
 // ── EC2 (IMDSv1) ─────────────────────────────────────────────────────────────
 
 fn fetch_ec2() -> Option<IndexMap<String, FactValue>> {
@@ -120,7 +87,6 @@ fn fetch_ec2() -> Option<IndexMap<String, FactValue>> {
             if let Ok(text) = resp.into_string() {
                 let text = text.trim().to_string();
                 if !text.is_empty() {
-                    // Use the last path component as key, replacing / with _
                     let key = field.replace('/', "_");
                     meta.insert(key, FactValue::String(text));
                 }

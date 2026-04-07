@@ -1,7 +1,6 @@
 use crate::facts::value::FactValue;
 use crate::resolvers::Resolver;
 use indexmap::IndexMap;
-use std::fs;
 
 pub struct DmiResolver;
 
@@ -13,19 +12,19 @@ impl Resolver for DmiResolver {
     fn resolve(&self) -> Vec<(String, FactValue)> {
         let mut facts = Vec::new();
 
-        let bios_date = read_dmi("bios_date");
-        let bios_vendor = read_dmi("bios_vendor");
-        let bios_version = read_dmi("bios_version");
-        let board_asset_tag = read_dmi("board_asset_tag");
-        let board_name = read_dmi("board_name");
-        let board_serial = read_dmi("board_serial");
-        let board_vendor = read_dmi("board_vendor");
-        let chassis_asset_tag = read_dmi("chassis_asset_tag");
-        let chassis_type = read_dmi("chassis_type");
-        let product_name = read_dmi("product_name");
-        let product_serial = read_dmi("product_serial");
-        let product_uuid = read_dmi("product_uuid");
-        let sys_vendor = read_dmi("sys_vendor");
+        let bios_date = crate::platform::read_dmi("bios_date");
+        let bios_vendor = crate::platform::read_dmi("bios_vendor");
+        let bios_version = crate::platform::read_dmi("bios_version");
+        let board_asset_tag = crate::platform::read_dmi("board_asset_tag");
+        let board_name = crate::platform::read_dmi("board_name");
+        let board_serial = crate::platform::read_dmi("board_serial");
+        let board_vendor = crate::platform::read_dmi("board_vendor");
+        let chassis_asset_tag = crate::platform::read_dmi("chassis_asset_tag");
+        let chassis_type = crate::platform::read_dmi("chassis_type");
+        let product_name = crate::platform::read_dmi("product_name");
+        let product_serial = crate::platform::read_dmi("product_serial");
+        let product_uuid = crate::platform::read_dmi("product_uuid");
+        let sys_vendor = crate::platform::read_dmi("sys_vendor");
 
         // Legacy flat facts
         if let Some(v) = &bios_vendor {
@@ -108,104 +107,8 @@ impl Resolver for DmiResolver {
     }
 }
 
-#[cfg(target_os = "linux")]
-fn read_dmi(field: &str) -> Option<String> {
-    let path = format!("/sys/class/dmi/id/{}", field);
-    fs::read_to_string(&path)
-        .ok()
-        .map(|s| sanitize(s.trim()))
-        .filter(|s| !s.is_empty() && s != "Not Specified" && s != "To Be Filled By O.E.M.")
-}
-
-/// Parse key: value lines from `system_profiler SPHardwareDataType` output.
-/// Pure function — no I/O, testable on any platform.
-#[allow(dead_code)]
-fn parse_system_profiler_hardware(output: &str) -> std::collections::HashMap<String, String> {
-    let mut map = std::collections::HashMap::new();
-    for line in output.lines() {
-        if let Some((key, val)) = line.split_once(':') {
-            let key = key.trim().to_string();
-            let val = val.trim().to_string();
-            if !key.is_empty() && !val.is_empty() {
-                map.insert(key, val);
-            }
-        }
-    }
-    map
-}
-
-#[cfg(target_os = "macos")]
-fn read_dmi(field: &str) -> Option<String> {
-    // Lazy-run system_profiler and cache it in a thread-local isn't ergonomic here;
-    // instead, read the single sysctl/ioreg value that maps to each field.
-    use crate::platform::macos::sysctl_string;
-    match field {
-        "product_name" => {
-            // hw.model = "MacBookPro18,1", or use IOPlatformExpertDevice
-            sysctl_string("hw.model")
-        }
-        "product_uuid" => {
-            // system_profiler Hardware UUID
-            let out = std::process::Command::new("ioreg")
-                .args(["-rd1", "-c", "IOPlatformExpertDevice"])
-                .output()
-                .ok()?;
-            let text = String::from_utf8_lossy(&out.stdout);
-            for line in text.lines() {
-                if line.contains("IOPlatformUUID") {
-                    if let Some(val) = line.split('"').nth(3) {
-                        return Some(val.to_string());
-                    }
-                }
-            }
-            None
-        }
-        "sys_vendor" => {
-            // Apple hardware is always Apple Inc.
-            Some("Apple Inc.".to_string())
-        }
-        "bios_vendor" => Some("Apple Inc.".to_string()),
-        "bios_version" => {
-            // Use ioreg ROM-revision or system_profiler
-            let out = std::process::Command::new("ioreg")
-                .args(["-rd1", "-c", "IOPlatformExpertDevice"])
-                .output()
-                .ok()?;
-            let text = String::from_utf8_lossy(&out.stdout);
-            for line in text.lines() {
-                if line.contains("version") || line.contains("Version") {
-                    if let Some(val) = line.split('"').nth(3) {
-                        return Some(val.to_string());
-                    }
-                }
-            }
-            None
-        }
-        "product_serial" | "board_serial" => {
-            let out = std::process::Command::new("ioreg")
-                .args(["-rd1", "-c", "IOPlatformExpertDevice"])
-                .output()
-                .ok()?;
-            let text = String::from_utf8_lossy(&out.stdout);
-            for line in text.lines() {
-                if line.contains("IOPlatformSerialNumber") {
-                    if let Some(val) = line.split('"').nth(3) {
-                        return Some(val.to_string());
-                    }
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn read_dmi(_field: &str) -> Option<String> {
-    None
-}
-
 /// Replace non-printable ASCII characters with '.', matching dmidecode behaviour.
+#[cfg(test)]
 fn sanitize(s: &str) -> String {
     s.chars()
         .map(|c| if (c as u32) < 32 || (c as u32) == 127 { '.' } else { c })
@@ -305,29 +208,5 @@ mod tests {
     #[test]
     fn chassis_description_trims_whitespace() {
         assert_eq!(chassis_description(" 3 "), "Desktop");
-    }
-
-    // ── parse_system_profiler_hardware ───────────────────────────────────────
-
-    #[test]
-    fn parse_system_profiler_hardware_basic() {
-        let output = "      Model Name: MacBook Pro\n      Serial Number (system): C02XG0JHJGH6\n";
-        let map = parse_system_profiler_hardware(output);
-        assert_eq!(map.get("Model Name").map(String::as_str), Some("MacBook Pro"));
-        assert_eq!(map.get("Serial Number (system)").map(String::as_str), Some("C02XG0JHJGH6"));
-    }
-
-    #[test]
-    fn parse_system_profiler_hardware_empty() {
-        let map = parse_system_profiler_hardware("");
-        assert!(map.is_empty());
-    }
-
-    #[test]
-    fn parse_system_profiler_hardware_skips_empty_values() {
-        let output = "      Model Name: MacBook Pro\n      Empty Field:\n";
-        let map = parse_system_profiler_hardware(output);
-        assert_eq!(map.get("Model Name").map(String::as_str), Some("MacBook Pro"));
-        assert!(!map.contains_key("Empty Field"));
     }
 }
