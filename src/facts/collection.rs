@@ -76,12 +76,14 @@ impl Collection {
     /// - A dotted path (e.g. `"os.distro.release"`) removes that key from within
     ///   the nested map, leaving the rest of `os` intact.
     pub fn exclude(&mut self, path: &str) {
-        match path.split_once('.') {
-            None => { self.facts.shift_remove(path); }
-            Some((head, tail)) => {
-                if let Some(value) = self.facts.get_mut(head) {
-                    exclude_path(value, tail);
-                }
+        // Exact match first — removes a flat key like "os.name" before trying traversal.
+        if self.facts.contains_key(path) {
+            self.facts.shift_remove(path);
+            return;
+        }
+        if let Some((head, tail)) = path.split_once('.') {
+            if let Some(value) = self.facts.get_mut(head) {
+                exclude_path(value, tail);
             }
         }
     }
@@ -149,22 +151,24 @@ impl Collection {
     }
 
     /// Look up a fact by dotted path, e.g. "os.release.major" or "processors.models.0".
+    ///
+    /// Exact key match is tried first, matching C++/Ruby facter behaviour: an external
+    /// fact stored as the flat key `"os.name"` shadows `os → name` path traversal when
+    /// queried as `"os.name"`, while sibling paths like `"os.release"` are unaffected.
     pub fn query(&self, path: &str) -> Option<&FactValue> {
-        let mut parts = path.splitn(2, '.');
-        let head = parts.next()?;
-        let tail = parts.next();
+        // Exact match first — flat keys containing dots (e.g. external facts) win.
+        if let Some(v) = self.facts.get(path) {
+            return Some(v);
+        }
+        // Path traversal
+        let (head, tail) = path.split_once('.')?;
         let mut current = self.facts.get(head)?;
-        if let Some(tail) = tail {
-            for part in tail.split('.') {
-                current = match current {
-                    FactValue::Map(m) => m.get(part)?,
-                    FactValue::Array(a) => {
-                        let idx: usize = part.parse().ok()?;
-                        a.get(idx)?
-                    }
-                    _ => return None,
-                };
-            }
+        for part in tail.split('.') {
+            current = match current {
+                FactValue::Map(m) => m.get(part)?,
+                FactValue::Array(a) => a.get(part.parse::<usize>().ok()?)?,
+                _ => return None,
+            };
         }
         Some(current)
     }
@@ -483,6 +487,54 @@ mod tests {
         c.remove_legacy();
         assert!(c.query("system_uptime").is_some());
         assert!(c.query("uptime_seconds").is_none());
+    }
+
+    // ── query exact-first (dotted flat keys) ─────────────────────────────────
+
+    #[test]
+    fn query_flat_dotted_key_wins_over_traversal() {
+        // External fact "os.name" stored as flat key shadows os → name traversal
+        let mut c = make(); // has structured os.name = "Ubuntu"
+        c.add("os.name", FactValue::String("ExternalOS".into()));
+        assert!(matches!(c.query("os.name"), Some(FactValue::String(s)) if s == "ExternalOS"));
+    }
+
+    #[test]
+    fn query_sibling_paths_unaffected_by_flat_dotted_key() {
+        // os.release still reachable via traversal even though "os.name" is flat
+        let mut c = make();
+        c.add("os.name", FactValue::String("ExternalOS".into()));
+        assert!(c.query("os.release").is_some());
+        assert!(c.query("os.distro").is_some());
+    }
+
+    #[test]
+    fn query_traversal_used_when_no_exact_match() {
+        let c = make();
+        // No flat "os.name" key — traversal finds it inside the os map
+        assert!(matches!(c.query("os.name"), Some(FactValue::String(s)) if s == "Ubuntu"));
+    }
+
+    // ── exclude exact-first (dotted flat keys) ────────────────────────────────
+
+    #[test]
+    fn exclude_removes_flat_dotted_key() {
+        let mut c = Collection::new();
+        c.add("os.name", FactValue::String("ExternalOS".into()));
+        c.exclude("os.name");
+        assert!(c.query("os.name").is_none());
+    }
+
+    #[test]
+    fn exclude_flat_dotted_key_does_not_touch_nested_map() {
+        // Excluding flat "os.name" must not descend into the os map
+        let mut c = make(); // has structured os map
+        c.add("os.name", FactValue::String("ExternalOS".into()));
+        c.exclude("os.name");
+        // flat key gone
+        assert!(c.facts.get("os.name").is_none());
+        // structured os.name still reachable via traversal
+        assert!(matches!(c.query("os.name"), Some(FactValue::String(s)) if s == "Ubuntu"));
     }
 
     // ── sort_keys ─────────────────────────────────────────────────────────────
